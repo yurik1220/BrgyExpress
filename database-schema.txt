@@ -1,0 +1,206 @@
+Database:
+-- Table: users
+Columns:
+    id               SERIAL PRIMARY KEY,
+    name             VARCHAR(100),
+    clerk_id         VARCHAR(50) UNIQUE NOT NULL,
+    phonenumber      VARCHAR(20),
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    email            TEXT,
+    contact          TEXT,
+    address          TEXT,
+    birth_date       DATE,
+    status           TEXT DEFAULT 'pending',
+    selfie_image_url TEXT,
+    id_image_url     TEXT,
+    updated_at       TIMESTAMP WITH TIME ZONE,
+    username         VARCHAR(255)
+);
+
+-- Constraints
+CONSTRAINT users_clerk_id_key UNIQUE (clerk_id),
+CONSTRAINT users_pkey PRIMARY KEY (id);
+
+-- Indexes
+INDEX idx_users_name ON users USING BTREE (name);
+INDEX idx_users_username ON users USING BTREE (username);
+UNIQUE INDEX users_clerk_id_key ON users USING BTREE (clerk_id);
+UNIQUE INDEX users_pkey ON users USING BTREE (id);
+
+-- Table: user_push_tokens
+Columns:
+    user_id     TEXT PRIMARY KEY,
+    push_token  TEXT NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at  TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Constraints
+CONSTRAINT user_push_tokens_pkey PRIMARY KEY (user_id);
+
+-- Indexes
+UNIQUE INDEX user_push_tokens_pkey ON user_push_tokens USING BTREE (user_id);
+
+-- Table: incident_reports
+Columns:
+    id               SERIAL PRIMARY KEY,
+    title            VARCHAR(100) NOT NULL,
+    description      TEXT NOT NULL,
+    media_url        TEXT,
+    location         TEXT,
+    clerk_id         VARCHAR(255) NOT NULL,
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status           VARCHAR(20) DEFAULT 'pending',
+    resolved_at      TIMESTAMP,
+    reference_number VARCHAR(20) UNIQUE
+);
+
+-- Constraints
+CONSTRAINT incident_reports_clerk_id_fkey 
+    FOREIGN KEY (clerk_id) REFERENCES public.users (clerk_id) ON DELETE CASCADE,
+CONSTRAINT incident_reports_reference_number_key UNIQUE (reference_number),
+CONSTRAINT incident_reports_pkey PRIMARY KEY (id);
+
+-- Indexes
+UNIQUE INDEX incident_reports_pkey ON incident_reports USING BTREE (id);
+UNIQUE INDEX incident_reports_reference_number_key ON incident_reports USING BTREE (reference_number);
+
+-- Table: id_requests
+Columns:
+    id                   SERIAL PRIMARY KEY,
+    full_name            VARCHAR(100) NOT NULL,
+    birth_date           DATE NOT NULL,
+    address              TEXT NOT NULL,
+    clerk_id             VARCHAR(255) NOT NULL,
+    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    contact              VARCHAR(20),
+    status               VARCHAR(20) DEFAULT 'pending',
+    rejection_reason     TEXT,
+    resolved_at          TIMESTAMP,
+    appointment_date     TIMESTAMP WITH TIME ZONE,
+    reference_number     VARCHAR(20) UNIQUE,
+    id_image_url         TEXT,
+    selfie_image_url     TEXT,
+    id_card_url          TEXT,
+    id_card_generated_at TIMESTAMP WITH TIME ZONE,
+    sex                  TEXT,
+    civil_status         TEXT,
+    signature_url        TEXT,
+    id_type              TEXT,
+    id_number            TEXT,
+    name_on_id           TEXT,
+    birthdate_on_id      DATE,
+    address_on_id        TEXT,
+    bill_image_url       TEXT,
+    bill_prob_tampered   DOUBLE PRECISION,
+    bill_pred_label      TEXT,
+    bill_threshold_used  DOUBLE PRECISION
+);
+
+-- Constraints
+CONSTRAINT id_requests_clerk_id_fkey 
+    FOREIGN KEY (clerk_id) REFERENCES public.users (clerk_id) ON DELETE CASCADE,
+CONSTRAINT id_requests_reference_number_key UNIQUE (reference_number),
+CONSTRAINT id_requests_pkey PRIMARY KEY (id);
+
+-- Indexes
+UNIQUE INDEX id_requests_pkey ON id_requests USING BTREE (id);
+UNIQUE INDEX id_requests_reference_number_key ON id_requests USING BTREE (reference_number);
+
+-- Table: file_uploads
+Columns:
+    id          TEXT PRIMARY KEY,
+    filename    TEXT,
+    mime_type   TEXT,
+    content     BYTEA NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Constraints
+CONSTRAINT file_uploads_pkey PRIMARY KEY (id);
+
+-- Indexes
+UNIQUE INDEX file_uploads_pkey ON file_uploads USING BTREE (id);
+
+-- Table: document_requests
+Columns:
+    id               SERIAL PRIMARY KEY,
+    document_type    VARCHAR(50) NOT NULL,
+    reason           VARCHAR(100) NOT NULL,
+    clerk_id         VARCHAR(255) NOT NULL,
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status           VARCHAR(20) DEFAULT 'pending',
+    rejection_reason TEXT,
+    resolved_at      TIMESTAMP,
+    appointment_date TIMESTAMP WITH TIME ZONE,
+    reference_number VARCHAR(20) UNIQUE,
+    remarks          TEXT
+);
+
+-- Constraints
+CONSTRAINT document_requests_clerk_id_fkey 
+    FOREIGN KEY (clerk_id) REFERENCES public.users (clerk_id) ON DELETE CASCADE,
+CONSTRAINT document_requests_reference_number_key UNIQUE (reference_number),
+CONSTRAINT document_requests_pkey PRIMARY KEY (id);
+
+-- Indexes
+UNIQUE INDEX document_requests_pkey ON document_requests USING BTREE (id);
+UNIQUE INDEX document_requests_reference_number_key ON document_requests USING BTREE (reference_number);
+
+-- Table: audit_logs
+Columns:
+    id              SERIAL PRIMARY KEY,
+    admin_id        INTEGER,
+    admin_username  VARCHAR(50),
+    action          VARCHAR(100) NOT NULL,
+    details         TEXT,
+    ip_address      INET,
+    user_agent      TEXT,
+    timestamp       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Constraints
+CONSTRAINT audit_logs_pkey PRIMARY KEY (id);
+
+-- Indexes
+UNIQUE INDEX audit_logs_pkey ON audit_logs USING BTREE (id);
+
+-- Table: announcements
+Columns:
+    id          SERIAL PRIMARY KEY,
+    clerk_id    VARCHAR(50),
+    title       VARCHAR(100) NOT NULL,
+    content     TEXT NOT NULL,
+    priority    VARCHAR(20) NOT NULL DEFAULT 'normal',
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    media_url   VARCHAR(255),
+    expires_at  TIMESTAMP WITH TIME ZONE
+);
+
+-- Constraints
+CONSTRAINT announcements_clerk_id_fkey 
+    FOREIGN KEY (clerk_id) REFERENCES public.users (clerk_id) ON DELETE CASCADE,
+CONSTRAINT announcements_pkey PRIMARY KEY (id);
+
+-- Indexes
+UNIQUE INDEX announcements_pkey ON announcements USING BTREE (id);
+INDEX idx_announcements_clerk_id ON announcements USING BTREE (clerk_id);
+INDEX idx_announcements_created_at ON announcements USING BTREE (created_at);
+
+-- Table: admins
+Columns:
+    id          SERIAL PRIMARY KEY,
+    username    VARCHAR(50) UNIQUE NOT NULL,
+    password    TEXT NOT NULL,
+    full_name   TEXT NOT NULL,
+    role        VARCHAR(20) DEFAULT 'admin',
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Constraints
+CONSTRAINT admins_username_key UNIQUE (username),
+CONSTRAINT admins_pkey PRIMARY KEY (id);
+
+-- Indexes
+UNIQUE INDEX admins_pkey ON admins USING BTREE (id);
+UNIQUE INDEX admins_username_key ON admins USING BTREE (username);

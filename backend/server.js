@@ -283,10 +283,10 @@ const extractAdminInfo = async (req, res, next) => {
                     // Get admin details from database
                     // Look up the admin by id to attach identity info to req
                     const result = await pool.query(
-                        'SELECT id, username FROM admins WHERE id = $1',
+                        'SELECT id, username, status FROM admins WHERE id = $1',
                         [adminId]
                     );
-                    if (result.rows.length > 0) {
+                    if (result.rows.length > 0 && result.rows[0].status === 'active') {
                         req.adminInfo = result.rows[0];
                     }
                 }
@@ -867,7 +867,7 @@ app.post('/api/admin/login', loginLimiter, auditLog('Admin Login'), [
         
         // Query admin from database
         const result = await pool.query(
-            'SELECT id, username, password, full_name, role FROM admins WHERE username = $1',
+            'SELECT id, username, password, full_name, role, status FROM admins WHERE username = $1',
             [username]
         );
 
@@ -894,6 +894,17 @@ app.post('/api/admin/login', loginLimiter, auditLog('Admin Login'), [
         }
 
         console.log('✅ Password verified successfully');
+
+        // Check if admin account is active
+        if (admin.status !== 'active') {
+            console.log('❌ Admin account is disabled:', username);
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Account is disabled. Please contact an administrator.' 
+            });
+        }
+
+        console.log('✅ Admin account is active');
 
         // Remove password from response
         const { password: _, ...adminData } = admin;
@@ -1055,6 +1066,229 @@ app.post('/api/admin/create', auditLog('Admin Creation'), [
 
     } catch (error) {
         console.error('Admin creation error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Internal server error' 
+        });
+    }
+});
+
+// ========== ADMIN MANAGEMENT ENDPOINTS ========== //
+console.log('👑 Setting up admin management endpoints...');
+
+// Middleware to check if user is super admin
+const requireSuperAdmin = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+    
+    const token = authHeader.split(' ')[1];
+    try {
+        const decoded = Buffer.from(token, 'base64').toString('utf-8');
+        const [adminId] = decoded.split(':');
+        
+        // Get admin from database to check role
+        pool.query('SELECT role, status FROM admins WHERE id = $1', [adminId])
+            .then(result => {
+                if (result.rows.length === 0) {
+                    return res.status(401).json({ success: false, message: 'Invalid token' });
+                }
+                
+                const admin = result.rows[0];
+                if (admin.role !== 'super_admin' || admin.status !== 'active') {
+                    return res.status(403).json({ success: false, message: 'Super admin access required' });
+                }
+                
+                req.adminId = adminId;
+                next();
+            })
+            .catch(err => {
+                console.error('Super admin check error:', err);
+                res.status(500).json({ success: false, message: 'Internal server error' });
+            });
+    } catch (error) {
+        return res.status(401).json({ success: false, message: 'Invalid token format' });
+    }
+};
+
+// Get all admins (super admin only)
+app.get('/api/admin/accounts', generalLimiter, requireSuperAdmin, auditLog('List Admin Accounts'), async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT id, username, full_name, role, status, created_at FROM admins ORDER BY created_at DESC'
+        );
+        
+        res.status(200).json({
+            success: true,
+            admins: result.rows
+        });
+    } catch (error) {
+        console.error('Error fetching admin accounts:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to fetch admin accounts' 
+        });
+    }
+});
+
+// Create new admin account (super admin only)
+app.post('/api/admin/accounts', generalLimiter, requireSuperAdmin, auditLog('Create Admin Account'), [
+    body('username')
+        .trim()
+        .escape()
+        .isLength({ min: 3, max: 50 })
+        .withMessage('Username must be between 3 and 50 characters'),
+    body('password')
+        .isLength({ min: 6 })
+        .withMessage('Password must be at least 6 characters long'),
+    body('full_name')
+        .trim()
+        .escape()
+        .isLength({ min: 2, max: 100 })
+        .withMessage('Full name must be between 2 and 100 characters'),
+    body('role')
+        .isIn(['admin', 'super_admin'])
+        .withMessage('Role must be either admin or super_admin')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Validation failed',
+            errors: errors.array()
+        });
+    }
+
+    const { username, password, full_name, role } = req.body;
+
+    try {
+        // Check if username already exists
+        const existingAdmin = await pool.query(
+            'SELECT id FROM admins WHERE username = $1',
+            [username]
+        );
+
+        if (existingAdmin.rows.length > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Username already exists' 
+            });
+        }
+
+        // Hash password with bcrypt
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        // If creating a super admin, the trigger will handle disabling the old one
+        const result = await pool.query(
+            'INSERT INTO admins (username, password, full_name, role, status) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, full_name, role, status, created_at',
+            [username, hashedPassword, full_name, role, 'active']
+        );
+
+        res.status(201).json({
+            success: true,
+            message: 'Admin account created successfully',
+            admin: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('Admin creation error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Internal server error' 
+        });
+    }
+});
+
+// Disable admin account (super admin only)
+app.patch('/api/admin/accounts/:id/disable', generalLimiter, requireSuperAdmin, auditLog('Disable Admin Account'), async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        // Check if admin exists
+        const adminResult = await pool.query(
+            'SELECT id, role, status FROM admins WHERE id = $1',
+            [id]
+        );
+
+        if (adminResult.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Admin not found' 
+            });
+        }
+
+        const admin = adminResult.rows[0];
+
+        // Prevent disabling the last active super admin
+        if (admin.role === 'super_admin' && admin.status === 'active') {
+            const superAdminCount = await pool.query(
+                'SELECT COUNT(*) FROM admins WHERE role = $1 AND status = $2',
+                ['super_admin', 'active']
+            );
+            
+            if (parseInt(superAdminCount.rows[0].count) <= 1) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Cannot disable the last active super admin' 
+                });
+            }
+        }
+
+        // Disable the admin
+        await pool.query(
+            'UPDATE admins SET status = $1 WHERE id = $2',
+            ['disabled', id]
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Admin account disabled successfully'
+        });
+
+    } catch (error) {
+        console.error('Admin disable error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Internal server error' 
+        });
+    }
+});
+
+// Enable admin account (super admin only)
+app.patch('/api/admin/accounts/:id/enable', generalLimiter, requireSuperAdmin, auditLog('Enable Admin Account'), async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        // Check if admin exists
+        const adminResult = await pool.query(
+            'SELECT id, role, status FROM admins WHERE id = $1',
+            [id]
+        );
+
+        if (adminResult.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Admin not found' 
+            });
+        }
+
+        const admin = adminResult.rows[0];
+
+        // If enabling a super admin, the trigger will handle disabling the old one
+        await pool.query(
+            'UPDATE admins SET status = $1 WHERE id = $2',
+            ['active', id]
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Admin account enabled successfully'
+        });
+
+    } catch (error) {
+        console.error('Admin enable error:', error);
         res.status(500).json({ 
             success: false, 
             message: 'Internal server error' 
@@ -2713,7 +2947,7 @@ async function generateIdCardImage({ id, fullName, birthDate, address, reference
                 // Respect EXIF orientation and ensure upright crop for the ID photo window
                 selfieProcessed = await sharp(selfieBuf)
                     .rotate() // auto based on EXIF
-                    .resize(300, 400, { fit: 'cover', position: 'centre' }) // portrait crop window
+                    .resize(220, 220, { fit: 'cover', position: 'centre' }) // template dimensions
                     .png()
                     .toBuffer();
             }
@@ -2744,10 +2978,10 @@ async function generateIdCardImage({ id, fullName, birthDate, address, reference
         const birthDateText = toYMD(birthDate || '');
 
 
-        // Address wrapping
-        const addressX = pxX(330);
-        // Place address text above the underline; allow up to two lines
-        const addressY = pxY(500);
+        // Address wrapping - exact coordinates
+        const addressX = pxX(470);
+        // Place address text; allow up to two lines
+        const addressY = pxY(270);
         const rightPadding = pxX(20);
         const maxAddressWidth = Math.max(0, baseW - rightPadding - addressX);
         const approxCharWidth = Math.max(6, Math.round(fontValue * 0.6));
@@ -2767,7 +3001,7 @@ async function generateIdCardImage({ id, fullName, birthDate, address, reference
                 }
             }
             if (current) lines.push(current);
-            return lines.slice(0, 2); // up to two lines above the address underline
+            return lines.slice(0, 2); // up to two lines for address
         };
         const addressLines = wrapAddress(address, maxCharsPerLine);
         const addressSvg = addressLines
@@ -2778,19 +3012,21 @@ async function generateIdCardImage({ id, fullName, birthDate, address, reference
         const svg = Buffer.from(`
         <svg width="${baseW}" height="${baseH}" viewBox="0 0 ${baseW} ${baseH}" xmlns="http://www.w3.org/2000/svg">
           <style>
-            .name { font-family: Arial, sans-serif; font-weight: 700; font-size: ${fontName}px; fill: #0f172a; }
-            .value { font-family: Arial, sans-serif; font-weight: 600; font-size: ${fontValue}px; fill: #111827; }
+            .name { font-family: Arial, sans-serif; font-weight: 700; font-size: ${pxX(35)}px; fill: #0f172a; }
+            .value { font-family: Arial, sans-serif; font-weight: 600; font-size: ${pxX(18)}px; fill: #111827; }
+            .birthdate { font-family: Arial, sans-serif; font-weight: 600; font-size: ${pxX(35)}px; fill: #111827; }
+            .refnum { font-family: Arial, sans-serif; font-weight: 600; font-size: ${pxX(18)}px; fill: #111827; }
           </style>
-          <!-- Resident Full Name line -->
-          <text x="${pxX(330)}" y="${pxY(270)}" class="name">${escapeXml(fullName || '')}</text>
-          <!-- Birth Date | Sex | Civil Status values on their lines -->
-          <text x="${pxX(330)}" y="${pxY(348)}" class="value">${escapeXml(birthDateText)}</text>
-          <text x="${pxX(540)}" y="${pxY(340)}" class="value">${escapeXml(sex || '')}</text>
-          <text x="${pxX(740)}" y="${pxY(340)}" class="value">${escapeXml(civilStatus || '')}</text>
-          <!-- Address value lines (wrapped before QR) -->
+          <!-- Resident Full Name line - exact coordinates -->
+          <text x="${pxX(470)}" y="${pxY(230)}" class="name">${escapeXml(fullName || '')}</text>
+          <!-- Address value lines -->
           ${addressSvg}
-          <!-- Reference number even lower and slightly left -->
-          <text x="${pxX(110)}" y="${pxY(580)}" class="value">${escapeXml(referenceNumber || String(id))}</text>
+          <!-- Birth Date - exact coordinates -->
+          <text x="${pxX(470)}" y="${pxY(380)}" class="birthdate">${escapeXml(birthDateText)}</text>
+          <!-- Sex - only show if provided -->
+          ${sex ? `<text x="${pxX(470)}" y="${pxY(430)}" class="value">${escapeXml(sex)}</text>` : ''}
+          <!-- Reference number - exact coordinates -->
+          <text x="${pxX(155)}" y="${pxY(475)}" class="refnum">${escapeXml(referenceNumber || String(id))}</text>
         </svg>
         `);
 
@@ -2800,8 +3036,8 @@ async function generateIdCardImage({ id, fullName, birthDate, address, reference
 
         // Build composite layers with graceful degradation
         const baseLayers = [{ input: svg, left: 0, top: 0 }];
-        const selfieWidth = Math.min(pxX(220), baseW);
-        const selfieHeight = Math.min(pxY(220), baseH);
+        const selfieWidth = Math.min(pxX(220), baseW); // Template size
+        const selfieHeight = Math.min(pxY(220), baseH); // Template size
         const selfieLeft = pxX(70);
         const selfieTop = pxY(210);
         const selfieLayer = selfieProcessed ? await sharp(selfieProcessed).resize(selfieWidth, selfieHeight, { fit: 'cover' }).png().toBuffer() : null;
@@ -2824,8 +3060,8 @@ async function generateIdCardImage({ id, fullName, birthDate, address, reference
                     sigBuf = fs.readFileSync(absSig);
                 }
                 if (sigBuf) {
-                    const sigResized = await sharp(sigBuf).resize(220, 60, { fit: 'inside' }).png().toBuffer();
-                    finalLayers = [...finalLayers, { input: sigResized, left: 112, top: 500 }];
+                    const sigResized = await sharp(sigBuf).resize(100, 30, { fit: 'inside' }).png().toBuffer(); // adjusted dimensions
+                    finalLayers = [...finalLayers, { input: sigResized, left: 110, top: 320 }];
                 }
             } catch (e) {
                 console.warn('Signature overlay skipped:', e?.message || e);
@@ -2952,6 +3188,9 @@ app.use((err, req, res, next) => {
         message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
     });
 });
+
+// Template management routes
+// Template management removed - using hardcoded positioning
 
 // Basic health and root routes for platform checks
 app.get('/', (req, res) => {

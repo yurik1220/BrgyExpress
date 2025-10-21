@@ -53,8 +53,11 @@ const Dashboard = () => {
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
         .slice(0, 7);
 
-    // Urgent items (pending requests)
-    const urgentItems = requests.filter(r => r.status === 'pending').slice(0, 4);
+    // Urgent items (oldest pending requests)
+    const urgentItems = requests
+        .filter(r => r.status === 'pending')
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+        .slice(0, 4);
 
     // Format time and date for Manila (Asia/Manila timezone)
     const formatManilaTime = () => {
@@ -244,11 +247,9 @@ const Dashboard = () => {
                                         </div>
                                         <div className="item-content">
                                             <h4>{item.type}</h4>
+                                            <p>Ref: {item.reference_number || item.id}</p>
                                             <p>Submitted {new Date(item.created_at).toLocaleDateString()}</p>
                                         </div>
-                                        <Link to={`/${item.type.toLowerCase().replace(' ', '-')}`} className="view-btn">
-                                            View
-                                        </Link>
                                     </div>
                                 ))
                             )}
@@ -268,7 +269,6 @@ const Dashboard = () => {
                                 <div className="header-cell">Type</div>
                                 <div className="header-cell">Status</div>
                                 <div className="header-cell">Date</div>
-                                <div className="header-cell">Action</div>
                             </div>
                             <div className="table-body">
                                 {recentActivity.length === 0 ? (
@@ -292,11 +292,6 @@ const Dashboard = () => {
                                             </div>
                                             <div className="table-cell">
                                                 {new Date(item.created_at).toLocaleDateString()}
-                                            </div>
-                                            <div className="table-cell">
-                                                <Link to={`/${item.type.toLowerCase().replace(' ', '-')}`} className="view-link">
-                                                    View Details
-                                                </Link>
                                             </div>
                                         </div>
                                     ))

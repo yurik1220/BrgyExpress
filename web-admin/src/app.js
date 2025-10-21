@@ -11,6 +11,8 @@ import AnnouncementPage from './pages/announcement-page';
 import AuditLogs from './pages/audit-logs';
 import Analytics from './pages/analytics';
 import AccountMaintenance from './pages/account-maintenance';
+import AdminManagement from './pages/admin-management';
+// Template manager removed
 
 import './styles/Dashboard.css';
 
@@ -36,6 +38,8 @@ function App() {
                     <Route path="audit-logs" element={<AuditLogs />} />
                     <Route path="analytics" element={<Analytics />} />
                     <Route path="account-maintenance" element={<AccountMaintenance />} />
+                    <Route path="admin-management" element={<AdminManagement />} />
+                    {/* Template manager removed */}
 
                 </Route>
                 

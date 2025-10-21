@@ -57,6 +57,16 @@ const Sidebar = ({ onSignOut }) => {
                         Acct. Maintenance
                     </NavLink>
                 </li>
+                {/* Super Admin Only - Manage Admin Accounts */}
+                {adminData.role === 'super_admin' && (
+                    <li>
+                        <NavLink to="/admin-management" className={({ isActive }) => isActive ? 'active' : ''}>
+                            <i className="fas fa-user-shield"></i>
+                            Manage Admin Accounts
+                        </NavLink>
+                    </li>
+                )}
+                {/* Template manager removed */}
 
             </ul>
             
