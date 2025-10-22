@@ -1,4 +1,4 @@
-import { ScrollView, Text, View, Image, Alert, Pressable, Dimensions } from "react-native";
+import { ScrollView, Text, View, Image, Alert, Pressable, Dimensions, KeyboardAvoidingView, Platform, TextInput } from "react-native";
 import { icons, images } from "@/constants";
 import InputField from "@/components/InputField";
 import React, { useState } from "react";
@@ -32,6 +32,10 @@ const SignUp = () => {
     error: "",
     code: "",
   });
+
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const startResendTimer = () => {
     setResendTimer(60); // 60 seconds
@@ -85,20 +89,36 @@ const SignUp = () => {
 
       if (result.status === "complete" && result.createdSessionId) {
         // 4. Send user data to the backend API   
+        setIsCreatingUser(true);
         try {
-          await fetchAPI(`${process.env.EXPO_PUBLIC_API_URL}/api/users`, {
+          const response = await fetchAPI(`${process.env.EXPO_PUBLIC_API_URL}/api/users`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               username: form.username,
               email: form.email.trim().toLowerCase(),
               clerkId: signUp.createdUserId,
-              createdAt: new Date().toISOString(),
+              phonenumber: null, // Add phonenumber field as expected by server
             }),
           });
+          
+          console.log('✅ User created in database:', response);
         } catch (dbError) {
           console.error('❌ Database user creation failed:', dbError);
-          // Continue with signup even if DB fails - user is created in Clerk
+          Alert.alert(
+            "Database Error", 
+            "Your account was created but there was an issue saving your profile. Please contact support if you experience any issues.",
+            [
+              {
+                text: "Continue",
+                onPress: () => {
+                  // Continue with signup even if DB fails - user is created in Clerk
+                }
+              }
+            ]
+          );
+        } finally {
+          setIsCreatingUser(false);
         }
 
         // Log the user in
@@ -136,7 +156,11 @@ const SignUp = () => {
   };
 
   return (
-    <View className="flex-1 bg-white">
+    <KeyboardAvoidingView 
+      className="flex-1 bg-white"
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+    >
       <LinearGradient
         colors={['#ffffff', '#f8f9fa']}
         className="absolute w-full h-full"
@@ -161,10 +185,16 @@ const SignUp = () => {
           </Text>
         </Animated.View>
 
-        <Animated.View 
-          entering={FadeInDown.delay(400).springify()}
-          className="flex-1 p-6 bg-white rounded-t-[32px] -mt-6"
+        <ScrollView 
+          className="flex-1 bg-white rounded-t-[32px] -mt-6"
+          contentContainerStyle={{ padding: 24, paddingBottom: 50 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
+          <Animated.View 
+            entering={FadeInDown.delay(400).springify()}
+            className="flex-1"
+          >
           <Text className="text-2xl font-Jakarta-Bold text-gray-800 mb-4">
             Sign Up
           </Text>
@@ -188,25 +218,57 @@ const SignUp = () => {
             className="mb-3"
           />
           
-          <InputField
-            label="Password"
-            placeholder="Enter your password"
-            icon={icons.lock}
-            secureTextEntry
-            value={form.password}
-            onChangeText={(v) => setForm({ ...form, password: v })}
-            className="mb-3"
-          />
+          <View className="my-2 w-full">
+            <Text className="text-lg font-JakartaSemiBold mb-3">
+              Password
+            </Text>
+            <View className="flex flex-row justify-start items-center relative bg-neutral-100 rounded-full border border-neutral-100 focus:border-primary-500">
+              <Image source={icons.lock} className="w-6 h-6 ml-4" />
+              <TextInput
+                className="rounded-full p-4 font-JakartaSemiBold text-[15px] flex-1 text-left"
+                placeholder="Enter your password"
+                secureTextEntry={!showPassword}
+                value={form.password}
+                onChangeText={(v: string) => setForm({ ...form, password: v })}
+              />
+              <Pressable
+                onPress={() => setShowPassword(!showPassword)}
+                className="mr-4 p-2"
+              >
+                <Ionicons 
+                  name={showPassword ? "eye-off" : "eye"} 
+                  size={20} 
+                  color="#666" 
+                />
+              </Pressable>
+            </View>
+          </View>
           
-          <InputField
-            label="Confirm Password"
-            placeholder="Confirm your password"
-            icon={icons.lock}
-            secureTextEntry
-            value={form.confirmPassword}
-            onChangeText={(v) => setForm({ ...form, confirmPassword: v })}
-            className="mb-3"
-          />
+          <View className="my-2 w-full">
+            <Text className="text-lg font-JakartaSemiBold mb-3">
+              Confirm Password
+            </Text>
+            <View className="flex flex-row justify-start items-center relative bg-neutral-100 rounded-full border border-neutral-100 focus:border-primary-500">
+              <Image source={icons.lock} className="w-6 h-6 ml-4" />
+              <TextInput
+                className="rounded-full p-4 font-JakartaSemiBold text-[15px] flex-1 text-left"
+                placeholder="Confirm your password"
+                secureTextEntry={!showConfirmPassword}
+                value={form.confirmPassword}
+                onChangeText={(v: string) => setForm({ ...form, confirmPassword: v })}
+              />
+              <Pressable
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="mr-4 p-2"
+              >
+                <Ionicons 
+                  name={showConfirmPassword ? "eye-off" : "eye"} 
+                  size={20} 
+                  color="#666" 
+                />
+              </Pressable>
+            </View>
+          </View>
 
           <Pressable 
             onPress={() => setAcceptedTerms(!acceptedTerms)}
@@ -236,7 +298,8 @@ const SignUp = () => {
               </Text>
             </Text>
           </Link>
-        </Animated.View>
+          </Animated.View>
+        </ScrollView>
       </View>
 
       {/* Terms and Conditions Modal */}
@@ -294,9 +357,10 @@ const SignUp = () => {
           )}
 
           <CustomButton 
-            title="Verify Email" 
+            title={isCreatingUser ? "Creating Account..." : "Verify Email"} 
             onPress={onPressVerifyEmail} 
             className="h-[56px] rounded-xl bg-success-500" 
+            disabled={isCreatingUser}
           />
 
           <Pressable 
@@ -331,7 +395,7 @@ const SignUp = () => {
           />
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
