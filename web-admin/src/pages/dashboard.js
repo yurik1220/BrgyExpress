@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import api from "../lib/fetch";
 import { Link, useNavigate } from "react-router-dom";
+import IncidentMap from "../components/IncidentMap";
 import '../styles/Dashboard.css';
 
 const Dashboard = () => {
@@ -92,7 +93,12 @@ const Dashboard = () => {
         }
     };
 
-    // (Removed) Quick model test handlers
+    // Handle incident click from map
+    const handleIncidentClick = (incident) => {
+        console.log('Incident clicked:', incident);
+        // Navigate to incident details or show modal
+        // navigate(`/incidents/${incident.id}`);
+    };
 
     const getTypeIcon = (type) => {
         switch (type) {
@@ -224,37 +230,12 @@ const Dashboard = () => {
 
             {/* Overview Grid */}
             <div className="overview-grid">
-                {/* Left Column - Urgent Items */}
+                {/* Left Column - Incident Map */}
                 <div className="overview-left">
-                    <div className="overview-card">
-                        <div className="card-header">
-                            <h3>Urgent Items</h3>
-                            <p>Pending requests that need attention</p>
-                        </div>
-                        
-                        <div className="urgent-items">
-                            {urgentItems.length === 0 ? (
-                                <div className="empty-urgent">
-                                    <i className="fas fa-check-circle"></i>
-                                    <p>No urgent items</p>
-                                    <span>All requests have been processed</span>
-                                </div>
-                            ) : (
-                                urgentItems.map((item) => (
-                                    <div className="urgent-item" key={item.id}>
-                                        <div className={`item-icon ${getStatusColor(item.status)}`}>
-                                            <i className={getTypeIcon(item.type)}></i>
-                                        </div>
-                                        <div className="item-content">
-                                            <h4>{item.type}</h4>
-                                            <p>Ref: {item.reference_number || item.id}</p>
-                                            <p>Submitted {new Date(item.created_at).toLocaleDateString()}</p>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
+                    <IncidentMap 
+                        onIncidentClick={handleIncidentClick}
+                        className="dashboard-map"
+                    />
                 </div>
 
                 {/* Right Column - Recent Activities */}

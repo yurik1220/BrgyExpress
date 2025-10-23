@@ -46,7 +46,7 @@ const SignIn = () => {
 
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
-        router.replace("/(root)/(tabs)/home"); // Navigate to home
+        router.replace("/(root)/(tabs)/home");
       } else {
         console.log(JSON.stringify(signInAttempt, null, 2));
         Alert.alert("Error", "Log in failed. Please try again.");
@@ -284,6 +284,7 @@ const SignIn = () => {
         />
       </View>
     </Modal>
+
     </>
   );
 };

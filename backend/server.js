@@ -1811,6 +1811,7 @@ app.post('/api/admin/users/:id/action', extractAdminInfo, auditLog('User Account
     }
 });
 
+
 // ========== NOTIFICATION FUNCTIONS ========== //
 async function sendPushNotification(userId, title, body, data) {
     console.log('🔔 Sending push notification:', { userId, title, body });
@@ -1881,10 +1882,13 @@ app.post('/api/save-push-token', async (req, res) => {
 app.post('/api/users', async (req, res) => {
     const { username, name, clerkId, phonenumber, email } = req.body || {};
     
+    console.log('📝 User creation request received:', { username, name, clerkId, phonenumber, email });
+    
     // Support both old 'name' and new 'username' fields during transition
     const displayName = username || name;
     
     if (!clerkId || !displayName) {
+        console.log('❌ Missing required fields:', { clerkId: !!clerkId, displayName: !!displayName });
         return res.status(400).json({ success: false, message: 'Missing required fields: username/name, clerkId' });
     }
     try {
@@ -1902,6 +1906,8 @@ app.post('/api/users', async (req, res) => {
              RETURNING id, username, name, clerk_id, phonenumber, email`,
             [displayName, null, clerkId, phonenumber || null, email || null]
         );
+        
+        console.log('✅ User created/updated successfully:', result.rows[0]);
         return res.status(201).json({ success: true, data: result.rows[0] });
     } catch (error) {
         console.error('❌ Error upserting user:', error);
@@ -2141,12 +2147,54 @@ app.get('/api/announcements/:id/comments', async (req, res) => {
 });
 
 // ========== USER PROFILE ENDPOINTS ========== //
+// Test endpoint to verify API connectivity
+app.get("/api/test", async (req, res) => {
+    res.status(200).json({ 
+        success: true, 
+        message: "API is working",
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Get current user info by clerk_id from token
+app.get("/api/users/me", async (req, res) => {
+    try {
+        // Extract clerk_id from request body or headers
+        const clerkId = req.body?.clerk_id || req.headers['x-clerk-id'];
+        
+        if (!clerkId) {
+            return res.status(401).json({ error: "User authentication required" });
+        }
+        
+        const userQuery = await pool.query(
+            "SELECT id, username, name, clerk_id, email, phonenumber, status FROM users WHERE clerk_id = $1",
+            [clerkId]
+        );
+
+        if (userQuery.rows.length === 0) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        const user = userQuery.rows[0];
+        
+        // Ensure username is populated, fallback to 'User' if missing
+        if (!user.username || user.username === '') {
+            user.username = 'User';
+        }
+
+        res.status(200).json(user);
+    } catch (error) {
+        console.error("Error fetching user profile:", error);
+        res.status(500).json({ error: "Error fetching user profile" });
+    }
+});
+
 app.get("/api/users/:clerkID", async (req, res) => {
     const { clerkID } = req.params;
 
     try {
         const userQuery = await pool.query(
-            "SELECT id, username, name, clerk_id, email, phonenumber FROM users WHERE clerk_id = $1",
+            "SELECT id, username, name, clerk_id, email, phonenumber, status FROM users WHERE clerk_id = $1",
             [clerkID]
         );
 
@@ -2194,6 +2242,7 @@ app.get("/api/users/:clerkID", async (req, res) => {
             id: user.id,
             username: user.username,
             clerk_id: user.clerk_id,
+            status: user.status,
             requests_completed: completedCount,
             requests_pending: pendingCount,
             member_since: memberSince.rows[0].earliest_date || new Date().toISOString(),
@@ -2662,6 +2711,73 @@ if ((process.env.NODE_ENV || 'development') !== 'production') {
         }
     });
 }
+
+// ========== INCIDENTS ENDPOINT FOR MAP ========== //
+app.get("/api/incidents", async (req, res) => {
+    console.log('🗺️ Fetching incidents for map...');
+    try {
+        const days = parseInt(req.query.days) || 30;
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        const startDateStr = startDate.toISOString();
+        
+        const result = await pool.query(`
+            SELECT inc.*, 'Incident Report' as type,
+                   u.name as requester_name,
+                   COALESCE(
+                     u.phonenumber,
+                     (SELECT contact FROM id_requests WHERE clerk_id = inc.clerk_id ORDER BY created_at DESC LIMIT 1)
+                   ) as requester_phone
+            FROM incident_reports inc
+            LEFT JOIN users u ON u.clerk_id = inc.clerk_id
+            WHERE inc.created_at >= $1
+            ORDER BY inc.created_at DESC
+        `, [startDateStr]);
+
+        // Transform incident reports to map-friendly format
+        // For now, we'll use mock coordinates since the current system doesn't store lat/lng
+        const mockIncidents = result.rows.map((incident, index) => {
+            // Generate mock coordinates around Manila area
+            const baseLat = 14.5995;
+            const baseLng = 120.9842;
+            const latOffset = (Math.random() - 0.5) * 0.01; // ~0.5km radius
+            const lngOffset = (Math.random() - 0.5) * 0.01;
+            
+            // Categorize incident type based on title/description keywords
+            let incidentType = 'traffic'; // default
+            const title = (incident.title || '').toLowerCase();
+            const description = (incident.description || '').toLowerCase();
+            
+            if (title.includes('fire') || description.includes('fire') || title.includes('burning') || description.includes('burning')) {
+                incidentType = 'fire';
+            } else if (title.includes('medical') || description.includes('medical') || title.includes('injury') || description.includes('injury') || title.includes('accident') || description.includes('accident')) {
+                incidentType = 'medical';
+            } else if (title.includes('traffic') || description.includes('traffic') || title.includes('road') || description.includes('road') || title.includes('vehicle') || description.includes('vehicle')) {
+                incidentType = 'traffic';
+            }
+
+            return {
+                id: incident.id,
+                latitude: baseLat + latOffset,
+                longitude: baseLng + lngOffset,
+                type: incidentType,
+                status: incident.status || 'pending',
+                timestamp: incident.created_at,
+                title: incident.title,
+                description: incident.description,
+                location: incident.location,
+                requester_name: incident.requester_name,
+                requester_phone: incident.requester_phone
+            };
+        });
+
+        console.log(`✅ Fetched ${mockIncidents.length} incidents for map`);
+        res.status(200).json(mockIncidents);
+    } catch (error) {
+        console.error("❌ Error fetching incidents:", error);
+        res.status(500).json({ error: "Error fetching incidents from database" });
+    }
+});
 
 app.patch('/api/incidents/:id', extractAdminInfo, auditLog('Update Incident Report'), async (req, res) => {
     const { id } = req.params;

@@ -279,6 +279,12 @@ body {
     align-items: start;
 }
 
+/* Dashboard Map specific styles */
+.dashboard-map {
+    height: 500px;
+    min-height: 400px;
+}
+
 .overview-left {
     display: flex;
     flex-direction: column;

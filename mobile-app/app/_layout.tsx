@@ -9,6 +9,7 @@ import { ClerkProvider, ClerkLoaded } from "@clerk/clerk-expo";
 import { LogBox } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import LoadingScreen from "@/components/LoadingScreen";
 
 
 // Initialize React Query client
@@ -38,16 +39,20 @@ export default function RootLayout() {
   });
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      // Add a small delay to ensure smooth transition
+      const timer = setTimeout(() => {
+        SplashScreen.hideAsync();
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [loaded]);
 
   if (!loaded) {
-    return null;
+    return <LoadingScreen message="Loading fonts..." />;
   }
 
   return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#FAF9F6' }}>
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
           <QueryClientProvider client={queryClient}>
             <ClerkLoaded>

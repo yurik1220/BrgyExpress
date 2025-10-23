@@ -2782,15 +2782,15 @@ async function generateIdCardImage({ id, fullName, birthDate, address, reference
             .value { font-family: Arial, sans-serif; font-weight: 600; font-size: ${fontValue}px; fill: #111827; }
           </style>
           <!-- Resident Full Name line -->
-          <text x="${pxX(330)}" y="${pxY(270)}" class="name">${escapeXml(fullName || '')}</text>
+          <text x="${pxX(470)}" y="${pxY(230)}" class="name">${escapeXml(fullName || '')}</text>
           <!-- Birth Date | Sex | Civil Status values on their lines -->
-          <text x="${pxX(330)}" y="${pxY(348)}" class="value">${escapeXml(birthDateText)}</text>
-          <text x="${pxX(540)}" y="${pxY(340)}" class="value">${escapeXml(sex || '')}</text>
+          <text x="${pxX(470)}" y="${pxY(380)}" class="value">${escapeXml(birthDateText)}</text>
+          <text x="${pxX(470)}" y="${pxY(430)}" class="value">${escapeXml(sex || '')}</text>
           <text x="${pxX(740)}" y="${pxY(340)}" class="value">${escapeXml(civilStatus || '')}</text>
           <!-- Address value lines (wrapped before QR) -->
           ${addressSvg}
           <!-- Reference number even lower and slightly left -->
-          <text x="${pxX(110)}" y="${pxY(580)}" class="value">${escapeXml(referenceNumber || String(id))}</text>
+          <text x="${pxX(155)}" y="${pxY(475)}" class="value">${escapeXml(referenceNumber || String(id))}</text>
         </svg>
         `);
 
