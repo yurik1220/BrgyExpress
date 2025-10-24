@@ -38,6 +38,7 @@ const crypto = require('crypto');
 const { Pool } = require("pg");
 const { Expo } = require('expo-server-sdk');
 const axios = require('axios');
+const admin = require('firebase-admin');
 let cloudinary = null;
 try {
     cloudinary = require('cloudinary').v2;
@@ -260,6 +261,23 @@ async function refreshIdImageColumnsFlag() {
 
 // Note: audit_logs table should be created externally using the SQL script
 console.log('📋 Audit logging system ready (table must exist in database)');
+
+// Initialize Firebase Admin SDK
+try {
+    // Check if Firebase service account key is provided
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            projectId: 'brgyexpress-notification'
+        });
+        console.log('🔥 Firebase Admin SDK initialized');
+    } else {
+        console.log('ℹ️ Firebase Admin SDK not configured (FIREBASE_SERVICE_ACCOUNT_KEY not found)');
+    }
+} catch (error) {
+    console.log('ℹ️ Firebase Admin SDK initialization failed:', error.message);
+}
 
 // Admin Authentication Middleware
 // Attempts to read admin identity from a simple base64 token (for demo purposes)
@@ -1813,6 +1831,72 @@ app.post('/api/admin/users/:id/action', extractAdminInfo, auditLog('User Account
 
 
 // ========== NOTIFICATION FUNCTIONS ========== //
+// Helper function to format dates for notifications
+function formatDateForNotification(dateString) {
+    if (!dateString) return 'TBA';
+    
+    try {
+        const date = new Date(dateString);
+        
+        // Check if date is valid
+        if (isNaN(date.getTime())) {
+            console.warn('Invalid date provided:', dateString);
+            return 'TBA';
+        }
+        
+        // Format as "October 10, 2025 Time: 11:30pm"
+        const monthNames = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        
+        const month = monthNames[date.getMonth()];
+        const day = date.getDate();
+        const year = date.getFullYear();
+        
+        // Format time as 12-hour with am/pm
+        let hours = date.getHours();
+        const minutes = date.getMinutes();
+        const ampm = hours >= 12 ? 'pm' : 'am';
+        hours = hours % 12;
+        hours = hours ? hours : 12; // 0 should be 12
+        const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+        
+        return `${month} ${day}, ${year} Time: ${hours}:${minutesStr}${ampm}`;
+    } catch (error) {
+        console.error('Error formatting date:', error);
+        return 'TBA'; // Return TBA if formatting fails
+    }
+}
+
+// Helper function to format relative time for notifications
+function formatRelativeTime(dateString) {
+    if (!dateString) return 'TBA';
+    
+    try {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffInMs = date.getTime() - now.getTime();
+        const diffInDays = Math.ceil(diffInMs / (1000 * 60 * 60 * 24));
+        
+        if (diffInDays === 0) {
+            return 'today';
+        } else if (diffInDays === 1) {
+            return 'tomorrow';
+        } else if (diffInDays === -1) {
+            return 'yesterday';
+        } else if (diffInDays > 0 && diffInDays <= 7) {
+            return `in ${diffInDays} day${diffInDays > 1 ? 's' : ''}`;
+        } else {
+            // Fall back to formatted date for dates further out
+            return formatDateForNotification(dateString);
+        }
+    } catch (error) {
+        console.error('Error formatting relative time:', error);
+        return formatDateForNotification(dateString);
+    }
+}
+
 async function sendPushNotification(userId, title, body, data) {
     console.log('🔔 Sending push notification:', { userId, title, body });
     try {
@@ -1828,25 +1912,52 @@ async function sendPushNotification(userId, title, body, data) {
 
         const pushToken = result.rows[0].push_token;
 
-        if (!Expo.isExpoPushToken(pushToken)) {
-            console.error(`Invalid Expo push token for user ${userId}`);
-            return { sent: false, error: 'Invalid token format' };
+        // Check if it's an Expo token or FCM token
+        if (Expo.isExpoPushToken(pushToken)) {
+            // Send via Expo
+            const message = {
+                to: pushToken,
+                sound: 'default',
+                title,
+                body,
+                data: {
+                    ...data,
+                    userId: userId.toString()
+                },
+            };
+
+            const ticket = await expo.sendPushNotificationsAsync([message]);
+            console.log('✅ Expo notification sent successfully:', ticket);
+            return { sent: true, ticket };
+        } else {
+            // Send via FCM
+            if (!admin.apps.length) {
+                console.log('⚠️ Firebase Admin not initialized, FCM notification skipped');
+                return { sent: false, error: 'Firebase Admin not initialized - notification skipped' };
+            }
+
+            const message = {
+                token: pushToken,
+                notification: {
+                    title,
+                    body
+                },
+                data: {
+                    ...data,
+                    userId: userId.toString()
+                },
+                android: {
+                    notification: {
+                        sound: 'default',
+                        channelId: 'default'
+                    }
+                }
+            };
+
+            const response = await admin.messaging().send(message);
+            console.log('✅ FCM notification sent successfully:', response);
+            return { sent: true, response };
         }
-
-        const message = {
-            to: pushToken,
-            sound: 'default',
-            title,
-            body,
-            data: {
-                ...data,
-                userId: userId.toString()
-            },
-        };
-
-        const ticket = await expo.sendPushNotificationsAsync([message]);
-        console.log('✅ Notification sent successfully:', ticket);
-        return { sent: true, ticket };
     } catch (error) {
         console.error('❌ Error sending notification:', error);
         return { sent: false, error: error.message };
@@ -1891,7 +2002,21 @@ app.post('/api/users', async (req, res) => {
         console.log('❌ Missing required fields:', { clerkId: !!clerkId, displayName: !!displayName });
         return res.status(400).json({ success: false, message: 'Missing required fields: username/name, clerkId' });
     }
+    
     try {
+        // Check if user account is disabled before creating/updating
+        const existingUser = await pool.query(
+            "SELECT status FROM users WHERE clerk_id = $1",
+            [clerkId]
+        );
+        
+        if (existingUser.rows.length > 0 && existingUser.rows[0].status === 'disabled') {
+            return res.status(403).json({ 
+                success: false, 
+                error: "Account Disabled", 
+                message: "Account Disabled. Please contact Barangay" 
+            });
+        }
         // Upsert by clerk_id, prefer provided phone/email if present
         // Store username in username column, leave name column blank (will be filled when ID is approved)
         const result = await pool.query(
@@ -1903,7 +2028,7 @@ app.post('/api/users', async (req, res) => {
                            phonenumber = COALESCE(EXCLUDED.phonenumber, users.phonenumber),
                            email = COALESCE(EXCLUDED.email, users.email),
                            updated_at = NOW()
-             RETURNING id, username, name, clerk_id, phonenumber, email`,
+             RETURNING id, username, name, clerk_id, phonenumber, email, status`,
             [displayName, null, clerkId, phonenumber || null, email || null]
         );
         
@@ -2001,6 +2126,30 @@ app.post('/api/announcements', upload.single('media'), auditLog('Create Announce
                  RETURNING *`,
             [title, content, priority, mediaUrl, expiry]
         );
+
+        // Send push notification to all users about the new announcement
+        try {
+            const allUsers = await pool.query('SELECT clerk_id FROM users WHERE status = $1', ['active']);
+            
+            for (const user of allUsers.rows) {
+                if (user.clerk_id) {
+                    await sendPushNotification(
+                        user.clerk_id,
+                        'New Announcement',
+                        `${title} - ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
+                        {
+                            type: 'Announcement',
+                            announcementId: result.rows[0].id,
+                            priority: priority
+                        }
+                    );
+                }
+            }
+            console.log(`📢 Sent announcement notification to ${allUsers.rows.length} users`);
+        } catch (notificationError) {
+            console.error('❌ Error sending announcement notifications:', notificationError);
+            // Don't fail the announcement creation if notifications fail
+        }
 
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -2203,6 +2352,14 @@ app.get("/api/users/:clerkID", async (req, res) => {
         }
 
         const user = userQuery.rows[0];
+        
+        // Check if user account is disabled
+        if (user.status === 'disabled') {
+            return res.status(403).json({ 
+                error: "Account Disabled", 
+                message: "Account Disabled. Please contact Barangay" 
+            });
+        }
         
         // Ensure username is populated, fallback to 'User' if missing
         if (!user.username || user.username === '') {
@@ -2815,8 +2972,8 @@ app.patch('/api/incidents/:id', extractAdminInfo, auditLog('Update Incident Repo
                 request.rows[0].clerk_id,
                 `Incident Report Update`,
                 status === 'in_progress'
-                    ? 'Your incident report is now being processed'
-                    : 'Your incident report has been closed',
+                    ? '🔄 Your incident report is now being processed by our team'
+                    : '✅ Your incident report has been closed and resolved',
                 {
                     requestId: id,
                     type: 'Incident Report',
@@ -2876,12 +3033,13 @@ app.patch('/api/document-requests/:id', extractAdminInfo, auditLog('Update Docum
         const result = await pool.query(query, values);
 
         if (request.rows[0].clerk_id) {
+            console.log(`🔔 Sending notification for document request ${id} to user ${request.rows[0].clerk_id}`);
             const notificationResult = await sendPushNotification(
                 request.rows[0].clerk_id,
-                `Document Request ${status}`,
+                `Document Request ${status.charAt(0).toUpperCase() + status.slice(1)}`,
                 status === 'approved'
-                    ? `Your document request has been approved! Pickup date: ${appointment_date}`
-                    : `Your document request was rejected. Reason: ${rejection_reason}`,
+                    ? `✅ Your document request has been approved! Pickup date: ${formatDateForNotification(appointment_date)}`
+                    : `❌ Your document request was rejected. Reason: ${rejection_reason}`,
                 {
                     requestId: id,
                     type: 'Document Request',
@@ -2892,8 +3050,12 @@ app.patch('/api/document-requests/:id', extractAdminInfo, auditLog('Update Docum
             );
 
             if (!notificationResult.sent) {
-                console.warn('Failed to send notification:', notificationResult.error);
+                console.warn('❌ Failed to send notification:', notificationResult.error);
+            } else {
+                console.log('✅ Notification sent successfully for document request');
             }
+        } else {
+            console.log('⚠️ No clerk_id found for document request, skipping notification');
         }
 
         res.status(200).json(result.rows[0]);
@@ -2951,14 +3113,15 @@ app.patch('/api/id-requests/:id', extractAdminInfo, auditLog('Update ID Request'
         const result = await pool.query(query, values);
 
         if (request.rows[0].clerk_id) {
-            let title = `ID Request ${status}`;
+            console.log(`🔔 Sending notification for ID request ${id} to user ${request.rows[0].clerk_id}`);
+            let title = `ID Request ${status.charAt(0).toUpperCase() + status.slice(1)}`;
             let bodyMsg = '';
             if (status === 'approved') {
-                bodyMsg = `Your ID creation request has been approved! Pickup date: ${appointment_date || 'TBA'}`;
+                bodyMsg = `✅ Your ID creation request has been approved! Pickup date: ${formatDateForNotification(appointment_date)}`;
             } else if (status === 'completed') {
-                bodyMsg = 'Your ID request has been completed.';
+                bodyMsg = '🎉 Your ID request has been completed and is ready for pickup!';
             } else {
-                bodyMsg = `Your ID creation request was rejected.${rejection_reason ? ` Reason: ${rejection_reason}` : ''}`;
+                bodyMsg = `❌ Your ID creation request was rejected.${rejection_reason ? ` Reason: ${rejection_reason}` : ''}`;
             }
 
             const notificationResult = await sendPushNotification(
@@ -2975,8 +3138,12 @@ app.patch('/api/id-requests/:id', extractAdminInfo, auditLog('Update ID Request'
             );
 
             if (!notificationResult.sent) {
-                console.warn('Failed to send notification:', notificationResult.error);
+                console.warn('❌ Failed to send notification:', notificationResult.error);
+            } else {
+                console.log('✅ Notification sent successfully for ID request');
             }
+        } else {
+            console.log('⚠️ No clerk_id found for ID request, skipping notification');
         }
 
         // If approved, generate ID card image (best effort, non-blocking for response)
@@ -3339,7 +3506,7 @@ app.listen(PORT, () => {
     console.log(`🔐 Admin Login: http://localhost:${PORT}/api/admin/login`);
     console.log('🛡️ Security Features: Rate limiting, Input validation, Session management');
     console.log('📱 Mobile API: Ready for mobile app requests');
-    console.log('🔔 Push Notifications: Expo SDK configured');
+    console.log('🔔 Push Notifications: Expo SDK + Firebase FCM configured');
     console.log('🗄️ Database: PostgreSQL connected');
     console.log('🎉 ========================================');
     console.log('📝 Server logs will appear below:');
