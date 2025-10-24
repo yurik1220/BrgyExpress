@@ -1,0 +1,39 @@
+# Render.com configuration for BrgyExpress Admin with Service Worker
+services:
+  - type: web
+    name: brgyexpress-admin
+    env: static
+    buildCommand: npm run build
+    staticPublishPath: ./build
+    headers:
+      - path: /sw.js
+        name: Service-Worker-Allowed
+        value: /
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /offline.html
+        name: Cache-Control
+        value: public, max-age=31536000
+      - path: /static/*
+        name: Cache-Control
+        value: public, max-age=31536000
+      - path: /*.js
+        name: Cache-Control
+        value: public, max-age=31536000
+      - path: /*.css
+        name: Cache-Control
+        value: public, max-age=31536000
+      - path: /*.png
+        name: Cache-Control
+        value: public, max-age=31536000
+      - path: /*.jpg
+        name: Cache-Control
+        value: public, max-age=31536000
+      - path: /*.ico
+        name: Cache-Control
+        value: public, max-age=31536000
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -14,7 +14,8 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "react-scripts build && node scripts/build-with-sw.js",
+    "build:sw": "react-scripts build && node scripts/build-with-sw.js",
     "test": "react-scripts test"
   },
   "eslintConfig": {

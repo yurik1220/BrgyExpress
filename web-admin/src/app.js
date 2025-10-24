@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import DashboardLayout from './components/DashboardLayout';
 import ProtectedRoute from './components/ProtectedRoute';
+import OfflineIndicator from './components/OfflineIndicator';
 import Dashboard from './pages/dashboard';
 import DocumentRequests from './pages/document-requests';
 import IncidentReports from './pages/incident-reports';
@@ -15,10 +16,22 @@ import AdminManagement from './pages/admin-management';
 // Template manager removed
 
 import './styles/Dashboard.css';
+import { register, setupServiceWorkerMessaging } from './lib/serviceWorker';
 
 function App() {
+    useEffect(() => {
+        // Register service worker in production
+        register();
+        
+        // Setup service worker messaging
+        setupServiceWorkerMessaging();
+    }, []);
+
     return (
         <Router>
+            {/* Offline Indicator - shows at top of screen */}
+            <OfflineIndicator />
+            
             <Routes>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
