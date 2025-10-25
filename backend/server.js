@@ -154,6 +154,9 @@ async function ensureSchema() {
 
         // Ensure announcements has expires_at column for auto-expiry
         await pool.query("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ");
+        
+        // Ensure announcements has deleted_at column for soft deletion
+        await pool.query("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ");
 
         // Ensure users table has required profile/status columns for account maintenance
         try {
@@ -399,7 +402,36 @@ const auditLog = (action) => {
                         })(),
                         timestamp: new Date().toISOString(),
                         userAgent: req.get('User-Agent'),
-                        referer: req.get('Referer')
+                        referer: req.get('Referer'),
+                        referenceNumber: (() => {
+                            // First, try to get reference number from request (set by update endpoints)
+                            if (req.auditReferenceNumber) {
+                                console.log('📝 Audit log - Using req.auditReferenceNumber:', req.auditReferenceNumber);
+                                return req.auditReferenceNumber;
+                            }
+                            
+                            // Fallback: try to get reference number from response data
+                            try {
+                                let responseData = data;
+                                if (typeof data === 'string') {
+                                    responseData = JSON.parse(data);
+                                }
+                                
+                                console.log('📝 Audit log - Response data:', JSON.stringify(responseData, null, 2));
+                                
+                                if (responseData && (responseData.reference_number || responseData.referenceNumber)) {
+                                    const refNum = responseData.reference_number || responseData.referenceNumber;
+                                    console.log('📝 Audit log - Using response reference number:', refNum);
+                                    return refNum;
+                                }
+                                
+                                console.log('📝 Audit log - No reference number found');
+                                return null;
+                            } catch (error) {
+                                console.error('Error parsing response for reference number:', error);
+                                return null;
+                            }
+                        })()
                     });
                     
                     await pool.query(
@@ -788,6 +820,9 @@ app.get('/api/admin/audit-logs', generalLimiter, async (req, res) => {
         let params = [];
         let paramCount = 0;
         
+        // Default filtering: only show Login, Logout, and Update actions
+        query += ` AND (action = 'Admin Login' OR action = 'Admin Logout' OR action ILIKE 'Update%')`;
+        
         if (action) {
             paramCount++;
             if (action === 'Update') {
@@ -824,7 +859,8 @@ app.get('/api/admin/audit-logs', generalLimiter, async (req, res) => {
         const countResult = await pool.query(countQuery, params);
         const totalCount = parseInt(countResult.rows[0].count);
         
-        // Get paginated results
+        // Get paginated results with timezone conversion to UTC+08:00 (Philippines)
+        query = query.replace('SELECT *', 'SELECT *, timestamp + INTERVAL \'8 hours\' as philippine_timestamp');
         query += ` ORDER BY timestamp DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
         params.push(parseInt(limit), offset);
         
@@ -1840,7 +1876,7 @@ function formatDateForNotification(dateString) {
         
         // Check if date is valid
         if (isNaN(date.getTime())) {
-            console.warn('Invalid date provided:', dateString);
+            // Suppress error logging for invalid dates
             return 'TBA';
         }
         
@@ -1864,7 +1900,7 @@ function formatDateForNotification(dateString) {
         
         return `${month} ${day}, ${year} Time: ${hours}:${minutesStr}${ampm}`;
     } catch (error) {
-        console.error('Error formatting date:', error);
+        // Suppress error logging for date formatting
         return 'TBA'; // Return TBA if formatting fails
     }
 }
@@ -1892,7 +1928,7 @@ function formatRelativeTime(dateString) {
             return formatDateForNotification(dateString);
         }
     } catch (error) {
-        console.error('Error formatting relative time:', error);
+        // Suppress error logging for relative time formatting
         return formatDateForNotification(dateString);
     }
 }
@@ -1924,6 +1960,11 @@ async function sendPushNotification(userId, title, body, data) {
                     ...data,
                     userId: userId.toString()
                 },
+                // Use announcements channel for announcement notifications
+                ...(data.type === 'Announcement' && {
+                    channelId: 'announcements',
+                    priority: 'high'
+                })
             };
 
             const ticket = await expo.sendPushNotificationsAsync([message]);
@@ -1949,7 +1990,8 @@ async function sendPushNotification(userId, title, body, data) {
                 android: {
                     notification: {
                         sound: 'default',
-                        channelId: 'default'
+                        channelId: data.type === 'Announcement' ? 'announcements' : 'default',
+                        priority: data.type === 'Announcement' ? 'high' : 'normal'
                     }
                 }
             };
@@ -1959,7 +2001,7 @@ async function sendPushNotification(userId, title, body, data) {
             return { sent: true, response };
         }
     } catch (error) {
-        console.error('❌ Error sending notification:', error);
+        // Suppress error logging for push notifications
         return { sent: false, error: error.message };
     }
 }
@@ -1989,6 +2031,85 @@ app.post('/api/save-push-token', async (req, res) => {
 });
 
 
+// ========== USER VALIDATION ENDPOINTS ==========
+// Check if username is available
+app.get('/api/users/check-username/:username', async (req, res) => {
+    const { username } = req.params;
+    
+    if (!username || username.trim().length < 3) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Username must be at least 3 characters long' 
+        });
+    }
+    
+    try {
+        const existingUser = await pool.query(
+            'SELECT id FROM users WHERE username = $1',
+            [username.trim()]
+        );
+        
+        if (existingUser.rows.length > 0) {
+            return res.status(409).json({ 
+                success: false, 
+                available: false,
+                message: 'Username has been taken' 
+            });
+        }
+        
+        return res.status(200).json({ 
+            success: true, 
+            available: true,
+            message: 'Username is available' 
+        });
+    } catch (error) {
+        console.error('Username check error:', error);
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Error checking username availability' 
+        });
+    }
+});
+
+// Check if email is available
+app.get('/api/users/check-email/:email', async (req, res) => {
+    const { email } = req.params;
+    
+    if (!email || !email.includes('@')) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Please provide a valid email address' 
+        });
+    }
+    
+    try {
+        const existingUser = await pool.query(
+            'SELECT id FROM users WHERE email = $1',
+            [email.trim().toLowerCase()]
+        );
+        
+        if (existingUser.rows.length > 0) {
+            return res.status(409).json({ 
+                success: false, 
+                available: false,
+                message: 'Email has been used, please log in to your existing account' 
+            });
+        }
+        
+        return res.status(200).json({ 
+            success: true, 
+            available: true,
+            message: 'Email is available' 
+        });
+    } catch (error) {
+        console.error('Email check error:', error);
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Error checking email availability' 
+        });
+    }
+});
+
 // ========== USER CREATION/UPSERT (from mobile after Clerk signup) ==========
 app.post('/api/users', async (req, res) => {
     const { username, name, clerkId, phonenumber, email } = req.body || {};
@@ -2016,6 +2137,38 @@ app.post('/api/users', async (req, res) => {
                 error: "Account Disabled", 
                 message: "Account Disabled. Please contact Barangay" 
             });
+        }
+
+        // Check if username is already taken by another user
+        if (displayName) {
+            const existingUsername = await pool.query(
+                'SELECT id, clerk_id FROM users WHERE username = $1 AND clerk_id != $2',
+                [displayName.trim(), clerkId]
+            );
+            
+            if (existingUsername.rows.length > 0) {
+                return res.status(409).json({ 
+                    success: false, 
+                    error: "Username Taken",
+                    message: 'Username has been taken' 
+                });
+            }
+        }
+
+        // Check if email is already used by another user
+        if (email) {
+            const existingEmail = await pool.query(
+                'SELECT id, clerk_id FROM users WHERE email = $1 AND clerk_id != $2',
+                [email.trim().toLowerCase(), clerkId]
+            );
+            
+            if (existingEmail.rows.length > 0) {
+                return res.status(409).json({ 
+                    success: false, 
+                    error: "Email Used",
+                    message: 'Email has been used, please log in to your existing account' 
+                });
+            }
         }
         // Upsert by clerk_id, prefer provided phone/email if present
         // Store username in username column, leave name column blank (will be filled when ID is approved)
@@ -2051,7 +2204,8 @@ app.get('/api/announcements', async (req, res) => {
                     (SELECT COUNT(*) FROM announcement_comments WHERE announcement_id = a.id) as comment_count,
                     (SELECT COUNT(*) FROM announcement_reactions WHERE announcement_id = a.id) as reaction_count
              FROM announcements a
-             WHERE a.expires_at IS NULL OR a.expires_at > NOW()
+             WHERE a.deleted_at IS NULL 
+               AND (a.expires_at IS NULL OR a.expires_at > NOW())
              ORDER BY a.created_at DESC`
         );
         console.log(`✅ Fetched ${announcements.rows.length} announcements`);
@@ -2073,7 +2227,7 @@ app.get('/api/announcements/:id', async (req, res) => {
                     (SELECT COUNT(*) FROM announcement_comments WHERE announcement_id = a.id) as comment_count,
                     (SELECT COUNT(*) FROM announcement_reactions WHERE announcement_id = a.id) as reaction_count
              FROM announcements a
-             WHERE a.id = $1`,
+             WHERE a.id = $1 AND a.deleted_at IS NULL`,
             [id]
         );
 
@@ -2131,23 +2285,35 @@ app.post('/api/announcements', upload.single('media'), auditLog('Create Announce
         try {
             const allUsers = await pool.query('SELECT clerk_id FROM users WHERE status = $1', ['active']);
             
+            // Format notification based on priority
+            const priorityEmoji = priority === 'high' ? '🚨' : priority === 'medium' ? '📢' : '📝';
+            const priorityText = priority === 'high' ? 'URGENT' : priority === 'medium' ? 'IMPORTANT' : 'GENERAL';
+            
+            // Truncate content for notification (keep it concise)
+            const maxLength = 80;
+            const truncatedContent = content.length > maxLength 
+                ? content.substring(0, maxLength).trim() + '...' 
+                : content;
+            
             for (const user of allUsers.rows) {
                 if (user.clerk_id) {
                     await sendPushNotification(
                         user.clerk_id,
-                        'New Announcement',
-                        `${title} - ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
+                        `${priorityEmoji} ${priorityText} Announcement`,
+                        `${title}\n\n${truncatedContent}`,
                         {
                             type: 'Announcement',
                             announcementId: result.rows[0].id,
-                            priority: priority
+                            priority: priority,
+                            title: title,
+                            content: content
                         }
                     );
                 }
             }
-            console.log(`📢 Sent announcement notification to ${allUsers.rows.length} users`);
+            console.log(`📢 Sent ${priorityText.toLowerCase()} announcement notification to ${allUsers.rows.length} users`);
         } catch (notificationError) {
-            console.error('❌ Error sending announcement notifications:', notificationError);
+            // Suppress error logging for announcement notifications
             // Don't fail the announcement creation if notifications fail
         }
 
@@ -2170,29 +2336,26 @@ app.delete('/api/announcements/:id', auditLog('Delete Announcement'), async (req
     const { id } = req.params;
 
     try {
-        // Get announcement to check for media file
+        // Check if announcement exists and is not already deleted
         const announcement = await pool.query(
-            'SELECT * FROM announcements WHERE id = $1',
+            'SELECT * FROM announcements WHERE id = $1 AND deleted_at IS NULL',
             [id]
         );
 
         if (announcement.rows.length === 0) {
-            return res.status(404).json({ error: "Index not found" });
+            return res.status(404).json({ error: "Announcement not found or already deleted" });
         }
 
-        // Delete associated media file if exists
-        if (announcement.rows[0].media_url) {
-            const filePath = path.join(__dirname, 'public', announcement.rows[0].media_url);
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-            }
-        }
+        // Soft delete: Set deleted_at timestamp instead of removing from database
+        await pool.query(
+            'UPDATE announcements SET deleted_at = NOW() WHERE id = $1',
+            [id]
+        );
 
-        // Delete the announcement
-        await pool.query('DELETE FROM announcements WHERE id = $1', [id]);
-        res.status(200).json({ success: true });
+        console.log(`🗑️ Soft deleted announcement ${id} (preserved in database)`);
+        res.status(200).json({ success: true, message: 'Announcement deleted successfully' });
     } catch (error) {
-        console.error('Error deleting announcement:', error);
+        console.error('Error soft deleting announcement:', error);
         res.status(500).json({ error: 'Failed to delete announcement' });
     }
 });
@@ -2321,7 +2484,12 @@ app.get("/api/users/me", async (req, res) => {
         );
 
         if (userQuery.rows.length === 0) {
-            return res.status(404).json({ error: "User not found" });
+            // For disabled accounts, we should return 403 instead of 404
+            // This helps distinguish between "user doesn't exist" vs "user is disabled"
+            return res.status(403).json({ 
+                error: "Account Disabled", 
+                message: "Account Disabled. Please contact Barangay" 
+            });
         }
 
         const user = userQuery.rows[0];
@@ -2348,7 +2516,12 @@ app.get("/api/users/:clerkID", async (req, res) => {
         );
 
         if (userQuery.rows.length === 0) {
-            return res.status(404).json({ error: "User not found" });
+            // For disabled accounts, we should return 403 instead of 404
+            // This helps distinguish between "user doesn't exist" vs "user is disabled"
+            return res.status(403).json({ 
+                error: "Account Disabled", 
+                message: "Account Disabled. Please contact Barangay" 
+            });
         }
 
         const user = userQuery.rows[0];
@@ -2982,7 +3155,7 @@ app.patch('/api/incidents/:id', extractAdminInfo, auditLog('Update Incident Repo
             );
 
             if (!notificationResult.sent) {
-                console.warn('Failed to send notification:', notificationResult.error);
+                // Suppress error logging for incident report notifications
             }
         }
 
@@ -3030,7 +3203,31 @@ app.patch('/api/document-requests/:id', extractAdminInfo, auditLog('Update Docum
             ? [status, id, appointment_date]
             : [status, id, rejection_reason];
 
+        // Get or generate reference number BEFORE database update
+        let referenceNumber = null;
+        const refResult = await pool.query('SELECT reference_number FROM document_requests WHERE id = $1', [id]);
+        if (refResult.rows.length > 0 && refResult.rows[0].reference_number) {
+            referenceNumber = refResult.rows[0].reference_number;
+        } else {
+            // Generate reference number if not exists
+            const generatedRef = `DOC-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${String(id).padStart(4, '0')}`;
+            referenceNumber = generatedRef;
+            // Update the database with the generated reference number
+            await pool.query('UPDATE document_requests SET reference_number = $1 WHERE id = $2', [generatedRef, id]);
+        }
+
+        // Set reference number in request for audit log BEFORE database update
+        req.auditReferenceNumber = referenceNumber;
+        console.log('🔧 Backend - Set req.auditReferenceNumber to:', referenceNumber);
+
         const result = await pool.query(query, values);
+
+        // Include reference number in the response for audit logs
+        const responseData = result.rows[0];
+        if (responseData && referenceNumber) {
+            responseData.reference_number = referenceNumber;
+            console.log('🔧 Backend - Added reference_number to response:', referenceNumber);
+        }
 
         if (request.rows[0].clerk_id) {
             console.log(`🔔 Sending notification for document request ${id} to user ${request.rows[0].clerk_id}`);
@@ -3050,7 +3247,7 @@ app.patch('/api/document-requests/:id', extractAdminInfo, auditLog('Update Docum
             );
 
             if (!notificationResult.sent) {
-                console.warn('❌ Failed to send notification:', notificationResult.error);
+                // Suppress error logging for document request notifications
             } else {
                 console.log('✅ Notification sent successfully for document request');
             }
@@ -3110,7 +3307,31 @@ app.patch('/api/id-requests/:id', extractAdminInfo, auditLog('Update ID Request'
             values = [status, id];
         }
 
+        // Get or generate reference number BEFORE database update
+        let referenceNumber = null;
+        const refResult = await pool.query('SELECT reference_number FROM id_requests WHERE id = $1', [id]);
+        if (refResult.rows.length > 0 && refResult.rows[0].reference_number) {
+            referenceNumber = refResult.rows[0].reference_number;
+        } else {
+            // Generate reference number if not exists
+            const generatedRef = `ID-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${String(id).padStart(4, '0')}`;
+            referenceNumber = generatedRef;
+            // Update the database with the generated reference number
+            await pool.query('UPDATE id_requests SET reference_number = $1 WHERE id = $2', [generatedRef, id]);
+        }
+
+        // Set reference number in request for audit log BEFORE database update
+        req.auditReferenceNumber = referenceNumber;
+        console.log('🔧 Backend - Set req.auditReferenceNumber to:', referenceNumber);
+
         const result = await pool.query(query, values);
+
+        // Include reference number in the response for audit logs
+        const responseData = result.rows[0];
+        if (responseData && referenceNumber) {
+            responseData.reference_number = referenceNumber;
+            console.log('🔧 Backend - Added reference_number to response:', referenceNumber);
+        }
 
         if (request.rows[0].clerk_id) {
             console.log(`🔔 Sending notification for ID request ${id} to user ${request.rows[0].clerk_id}`);
@@ -3119,7 +3340,7 @@ app.patch('/api/id-requests/:id', extractAdminInfo, auditLog('Update ID Request'
             if (status === 'approved') {
                 bodyMsg = `✅ Your ID creation request has been approved! Pickup date: ${formatDateForNotification(appointment_date)}`;
             } else if (status === 'completed') {
-                bodyMsg = '🎉 Your ID request has been completed and is ready for pickup!';
+                bodyMsg = `🎉 Your ID request has been completed and is ready for pickup! Pickup date: ${formatDateForNotification(appointment_date)}`;
             } else {
                 bodyMsg = `❌ Your ID creation request was rejected.${rejection_reason ? ` Reason: ${rejection_reason}` : ''}`;
             }
@@ -3138,7 +3359,7 @@ app.patch('/api/id-requests/:id', extractAdminInfo, auditLog('Update ID Request'
             );
 
             if (!notificationResult.sent) {
-                console.warn('❌ Failed to send notification:', notificationResult.error);
+                // Suppress error logging for ID request notifications
             } else {
                 console.log('✅ Notification sent successfully for ID request');
             }
