@@ -374,7 +374,7 @@ const DocumentRequests = () => {
                         <div className="modal-body">
                             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 16 }}>
                               {/* Left: Main details */}
-                              <div className="request-details">
+                              <div>
                                 <div className="detail-item">
                                     <span className="label">Reference Number:</span>
                                     <span className="value">#{selectedRequest.reference_number}</span>

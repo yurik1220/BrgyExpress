@@ -315,7 +315,7 @@ const IncidentReports = () => {
                                         )}
                                     </div>
                                 )}
-                                <div className="incident-details">
+                                <div>
                                     <div className="detail-item"><span className="label">Reference Number:</span><span className="value">#{selectedReport.reference_number}</span></div>
                                     <div className="detail-item"><span className="label">Title:</span><span className="value">{selectedReport.title}</span></div>
                                     <div className="detail-item"><span className="label">Location:</span><span className="value">{selectedReport.location}</span></div>

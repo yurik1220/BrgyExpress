@@ -67,6 +67,9 @@
     flex: 1;
     min-height: 400px;
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .map-loading,
@@ -124,34 +127,51 @@
 }
 
 .no-incidents {
-    position: absolute;
+    position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     text-align: center;
     color: #6b7280;
     z-index: 1000;
-    background: rgba(255, 255, 255, 0.9);
-    padding: 20px;
-    border-radius: 8px;
-    backdrop-filter: blur(4px);
+    background: rgba(255, 255, 255, 0.95);
+    padding: 24px 32px;
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    min-width: 280px;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    box-sizing: border-box;
 }
 
 .no-incidents i {
     font-size: 2rem;
-    margin-bottom: 8px;
+    margin: 0 0 8px 0;
     color: #9ca3af;
+    display: block;
+    text-align: center;
 }
 
 .no-incidents p {
     margin: 0 0 4px 0;
     font-weight: 500;
     color: #374151;
+    text-align: center;
+    width: 100%;
 }
 
 .no-incidents span {
     font-size: 0.875rem;
     color: #6b7280;
+    text-align: center;
+    width: 100%;
+    display: block;
 }
 
 /* Custom marker styles */
@@ -233,6 +253,201 @@
     font-weight: 500;
     cursor: pointer;
     transition: background-color 0.2s;
+}
+
+/* Custom incident popup styles */
+.custom-incident-popup .leaflet-popup-content-wrapper {
+    border-radius: 12px !important;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15) !important;
+    border: 2px solid #e5e7eb !important;
+    padding: 0 !important;
+    background: white !important;
+    min-width: 250px !important;
+    max-width: 300px !important;
+}
+
+.custom-incident-popup .leaflet-popup-content {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+.custom-incident-popup .leaflet-popup-tip {
+    background: white !important;
+    border: 2px solid #e5e7eb !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+    width: 16px !important;
+    height: 16px !important;
+}
+
+/* Incident popup content styling - simplified */
+.incident-popup {
+    padding: 0 !important;
+    background: white !important;
+    border-radius: 12px !important;
+    min-width: 220px !important;
+    overflow: hidden !important;
+}
+
+.incident-popup .popup-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 12px 16px !important;
+    background: #f8fafc !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    margin: 0 !important;
+}
+
+.incident-popup .popup-title {
+    font-size: 0.875rem !important;
+    font-weight: 600 !important;
+    color: #374151 !important;
+    margin: 0 !important;
+}
+
+.incident-popup .popup-close-btn {
+    background: none !important;
+    border: none !important;
+    color: #6b7280 !important;
+    cursor: pointer !important;
+    padding: 4px !important;
+    border-radius: 4px !important;
+    font-size: 0.75rem !important;
+    transition: all 0.2s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 24px !important;
+    height: 24px !important;
+}
+
+.incident-popup .popup-close-btn:hover {
+    background: #e5e7eb !important;
+    color: #374151 !important;
+}
+
+.incident-popup .popup-actions {
+    margin: 0 !important;
+    padding: 16px !important;
+}
+
+/* View Details Button */
+.view-details-btn {
+    background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+    color: white !important;
+    border: none !important;
+    padding: 12px 20px !important;
+    border-radius: 8px !important;
+    font-size: 0.875rem !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-decoration: none !important;
+    outline: none !important;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3) !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+.view-details-btn::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: -100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent) !important;
+    transition: left 0.5s !important;
+}
+
+.view-details-btn:hover {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4) !important;
+}
+
+.view-details-btn:hover::before {
+    left: 100% !important;
+}
+
+.view-details-btn:active {
+    transform: translateY(0) !important;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .custom-incident-popup .leaflet-popup-content-wrapper {
+        min-width: 220px !important;
+        max-width: 280px !important;
+    }
+    
+    .incident-popup {
+        padding: 16px !important;
+    }
+    
+    .incident-popup h3 {
+        font-size: 1rem !important;
+    }
+    
+    .view-details-btn {
+        padding: 10px 16px !important;
+        font-size: 0.8rem !important;
+    }
+}
+
+/* Prevent map movement */
+.leaflet-popup-pane {
+    pointer-events: auto !important;
+}
+
+.custom-incident-popup {
+    pointer-events: auto !important;
+}
+
+/* Ensure popup stays within viewport */
+.leaflet-popup {
+    pointer-events: auto !important;
+}
+
+/* Responsive popup positioning */
+.custom-incident-popup {
+    position: relative !important;
+}
+
+.custom-incident-popup .leaflet-popup-content-wrapper {
+    position: relative !important;
+    transition: all 0.3s ease !important;
+}
+
+/* Popup tip positioning for responsive layout */
+.custom-incident-popup .leaflet-popup-tip {
+    position: absolute !important;
+    transition: all 0.3s ease !important;
+}
+
+/* Ensure popup content is always visible */
+.incident-popup {
+    position: relative !important;
+    z-index: 1000 !important;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+    .custom-incident-popup .leaflet-popup-content-wrapper {
+        max-width: 90vw !important;
+        min-width: 200px !important;
+    }
+    
+    .incident-popup {
+        min-width: 180px !important;
+    }
 }
 
 .btn-primary:hover {

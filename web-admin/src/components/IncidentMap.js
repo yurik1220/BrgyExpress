@@ -34,6 +34,20 @@ const createCustomIcon = (type) => {
     });
 };
 
+// Component to set fractional zoom level
+const FractionalZoomSetter = () => {
+    const map = useMap();
+    
+    useEffect(() => {
+        // Set zoom to 16.2 after map initializes, but respect bounds
+        setTimeout(() => {
+            map.setZoom(16.2, { animate: false });
+        }, 100);
+    }, [map]);
+    
+    return null;
+};
+
 // Component to handle map updates and pin management
 const MapController = ({ incidents, onIncidentClick }) => {
     const map = useMap();
@@ -44,7 +58,7 @@ const MapController = ({ incidents, onIncidentClick }) => {
         const currentMarkers = markersRef.current;
         const mapInstance = map;
         
-        // Remove all existing markers
+        // Remove all existing markers first
         currentMarkers.forEach((marker) => {
             mapInstance.removeLayer(marker);
         });
@@ -58,46 +72,22 @@ const MapController = ({ incidents, onIncidentClick }) => {
                     icon: createCustomIcon(incident.type)
                 });
                 
-                // Create popup content
-                const popupContent = `
-                    <div class="incident-popup">
-                        <div class="popup-header">
-                            <h4>${incident.type.charAt(0).toUpperCase() + incident.type.slice(1)} Incident</h4>
-                            <span class="status-badge ${incident.status}">${incident.status}</span>
-                        </div>
-                        <div class="popup-details">
-                            <p><strong>ID:</strong> ${incident.id}</p>
-                            <p><strong>Type:</strong> ${incident.type}</p>
-                            <p><strong>Status:</strong> ${incident.status}</p>
-                            <p><strong>Reported:</strong> ${new Date(incident.timestamp).toLocaleString()}</p>
-                            <p><strong>Location:</strong> ${incident.latitude.toFixed(6)}, ${incident.longitude.toFixed(6)}</p>
-                        </div>
-                        <div class="popup-actions">
-                            <button class="btn-primary" onclick="window.handleIncidentClick('${incident.id}')">
-                                View Details
-                            </button>
-                        </div>
-                    </div>
-                `;
-                
-                marker.bindPopup(popupContent);
-                
-                // Add click handler
-                marker.on('click', () => {
-                    if (onIncidentClick) {
-                        onIncidentClick(incident);
-                    }
+                // Direct click handler - no popup, navigate directly to details
+                marker.on('click', (e) => {
+                    e.originalEvent.stopPropagation();
+                    
+                    // Navigate to incident reports page
+                    window.location.href = '/incident-reports';
+                    
+                    // Store the incident ID to open modal after page load
+                    sessionStorage.setItem('openIncidentModal', incident.id);
                 });
                 
                 marker.addTo(mapInstance);
                 currentMarkers.set(incident.id, marker);
             });
         
-        // Fit map to show all markers if there are any
-        if (incidents.filter(incident => incident.status !== 'closed').length > 0) {
-            const group = new L.featureGroup(Array.from(currentMarkers.values()));
-            mapInstance.fitBounds(group.getBounds().pad(0.1));
-        }
+        // Map bounds fitting removed to prevent refresh
         
     }, [incidents, map, onIncidentClick]);
     
@@ -148,8 +138,8 @@ const IncidentMap = ({ onIncidentClick, className = '' }) => {
                 if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
                     console.warn(`Invalid coordinates for incident ${incident.id}: ${incident.location}`);
                     // Use center of the barangay area as fallback
-                    lat = 14.6574957;
-                    lng = 120.9739823;
+                    lat = 14.6566; // Approximate center of new polygon
+                    lng = 120.9758; // Approximate center of new polygon
                 }
 
                 return {
@@ -180,13 +170,13 @@ const IncidentMap = ({ onIncidentClick, className = '' }) => {
         }
     }, []);
     
-    // Fetch incidents (live updates disabled)
+    // Fetch incidents with 30-second refresh
     useEffect(() => {
         // Initial fetch
         fetchIncidents();
         
-        // Set up polling every 5 seconds for live updates - DISABLED
-        // pollingIntervalRef.current = setInterval(fetchIncidents, 5000);
+        // Set up polling every 30 seconds for live updates
+        pollingIntervalRef.current = setInterval(fetchIncidents, 30000);
         
         // Cleanup on unmount
         return () => {
@@ -208,16 +198,12 @@ const IncidentMap = ({ onIncidentClick, className = '' }) => {
                     geometry: {
                         type: 'LineString',
                         coordinates: [
-                            [120.9739823, 14.6574957],
-                            [120.9749372, 14.653214],
-                            [120.9770132, 14.6536033],
-                            [120.9767041, 14.6551881],
-                            [120.9774565, 14.655831],
-                            [120.9772401, 14.6564566],
-                            [120.9773045, 14.6574973],
-                            [120.9762415, 14.6577049],
-                            [120.9752142, 14.6575429],
-                            [120.9739823, 14.6574957]
+                            [120.9740121, 14.6575099],
+                            [120.9749562, 14.6531815],
+                            [120.9770162, 14.6535448],
+                            [120.9780998, 14.6589319],
+                            [120.9748597, 14.6584233],
+                            [120.9740121, 14.6575099]
                         ]
                     }
                 }
@@ -335,7 +321,7 @@ const IncidentMap = ({ onIncidentClick, className = '' }) => {
     return (
         <div className={`incident-map-container ${className}`}>
             <div className="map-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3>Live Incident Map</h3>
+                <h3>Active Incident Map</h3>
                 {lastUpdate && (
                     <div className="last-update">
                         Last updated: {lastUpdate.toLocaleTimeString()}
@@ -347,20 +333,23 @@ const IncidentMap = ({ onIncidentClick, className = '' }) => {
                 {barangayGeoJson && (
                     <MapContainer
                         center={barangayCenter}
-                        zoom={17}
+                        zoom={16}
                         style={{ width: '100%', height: '100%' }}
                         bounds={barangayBounds || undefined}
-                        boundsOptions={{ padding: [0, 0] }}
+                        boundsOptions={{ padding: [20, 20] }}
                         maxBounds={barangayBounds || undefined}
                         maxBoundsViscosity={1.0}
-                        dragging={false}
-                        zoomControl={false}
-                        scrollWheelZoom={false}
-                        doubleClickZoom={false}
-                        boxZoom={false}
-                        keyboard={false}
-                        touchZoom={false}
+                        minZoom={15}
+                        maxZoom={20}
+                        dragging={true}
+                        zoomControl={true}
+                        scrollWheelZoom={true}
+                        doubleClickZoom={true}
+                        boxZoom={true}
+                        keyboard={true}
+                        touchZoom={true}
                     >
+                        <FractionalZoomSetter />
                         <TileLayer
                             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -375,13 +364,6 @@ const IncidentMap = ({ onIncidentClick, className = '' }) => {
             </div>
             
 
-            {activeIncidents.length === 0 && (
-                <div className="no-incidents">
-                    <i className="fas fa-map-marker-alt"></i>
-                    <p>No active incidents</p>
-                    <span>All incidents have been resolved</span>
-                </div>
-            )}
         </div>
     );
 };

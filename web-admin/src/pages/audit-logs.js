@@ -46,6 +46,8 @@ const AuditLogs = () => {
     });
     const [selectedQuickFilter, setSelectedQuickFilter] = useState('');
     const [showFilters, setShowFilters] = useState(false);
+    const [selectedLog, setSelectedLog] = useState(null);
+    const [showDetailsModal, setShowDetailsModal] = useState(false);
 
     const fetchLogs = async () => {
         setLoading(true);
@@ -59,12 +61,8 @@ const AuditLogs = () => {
             const response = await api.get(`/api/admin/audit-logs?${params}`);
             
             if (response.data.success) {
-                // Keep only Login, Logout, and any Update actions
-                const filtered = (response.data.data || []).filter(log => {
-                    const action = log?.action || '';
-                    return action === 'Admin Login' || action === 'Admin Logout' || action.includes('Update');
-                });
-                setLogs(filtered);
+                // Backend now handles the filtering, so use data directly
+                setLogs(response.data.data || []);
                 setPagination(response.data.pagination);
             } else {
                 setError('Failed to fetch audit logs');
@@ -126,8 +124,16 @@ const AuditLogs = () => {
                 // Clear all filters - show everything
                 break;
             case 'today':
-                newFilters.start_date = today.toISOString().split('T')[0];
-                newFilters.end_date = today.toISOString().split('T')[0];
+                // Set to start and end of today in local timezone
+                const startOfToday = new Date(today);
+                startOfToday.setHours(0, 0, 0, 0);
+                
+                const endOfToday = new Date(today);
+                endOfToday.setHours(23, 59, 59, 999);
+                
+                // Convert to ISO string for backend compatibility
+                newFilters.start_date = startOfToday.toISOString();
+                newFilters.end_date = endOfToday.toISOString();
                 break;
             case 'week':
                 // Get start of current week (Monday)
@@ -137,20 +143,41 @@ const AuditLogs = () => {
                 startOfWeek.setDate(today.getDate() + daysToMonday);
                 startOfWeek.setHours(0, 0, 0, 0);
                 
-                newFilters.start_date = startOfWeek.toISOString().split('T')[0];
-                newFilters.end_date = today.toISOString().split('T')[0];
+                const endOfWeek = new Date(today);
+                endOfWeek.setHours(23, 59, 59, 999);
+                
+                newFilters.start_date = startOfWeek.toISOString();
+                newFilters.end_date = endOfWeek.toISOString();
                 break;
             case 'month':
-                newFilters.start_date = startOfMonth.toISOString().split('T')[0];
-                newFilters.end_date = today.toISOString().split('T')[0];
+                const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                startOfMonth.setHours(0, 0, 0, 0);
+                
+                const endOfTodayMonth = new Date(today);
+                endOfTodayMonth.setHours(23, 59, 59, 999);
+                
+                newFilters.start_date = startOfMonth.toISOString();
+                newFilters.end_date = endOfTodayMonth.toISOString();
                 break;
             case 'recent':
-                newFilters.start_date = new Date(today.getTime() - (7 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0];
-                newFilters.end_date = today.toISOString().split('T')[0];
+                const startOfRecent = new Date(today.getTime() - (7 * 24 * 60 * 60 * 1000));
+                startOfRecent.setHours(0, 0, 0, 0);
+                
+                const endOfRecent = new Date(today);
+                endOfRecent.setHours(23, 59, 59, 999);
+                
+                newFilters.start_date = startOfRecent.toISOString();
+                newFilters.end_date = endOfRecent.toISOString();
                 break;
             case 'month30':
-                newFilters.start_date = new Date(today.getTime() - (30 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0];
-                newFilters.end_date = today.toISOString().split('T')[0];
+                const startOfMonth30 = new Date(today.getTime() - (30 * 24 * 60 * 60 * 1000));
+                startOfMonth30.setHours(0, 0, 0, 0);
+                
+                const endOfMonth30 = new Date(today);
+                endOfMonth30.setHours(23, 59, 59, 999);
+                
+                newFilters.start_date = startOfMonth30.toISOString();
+                newFilters.end_date = endOfMonth30.toISOString();
                 break;
             default:
                 break;
@@ -161,7 +188,26 @@ const AuditLogs = () => {
     };
 
     const formatTimestamp = (timestamp) => {
-        return new Date(timestamp).toLocaleString();
+        try {
+            const date = new Date(timestamp);
+            if (isNaN(date.getTime())) {
+                return 'Invalid date';
+            }
+            
+            // Format the timestamp (already in Philippine timezone UTC+08:00 from backend)
+            return date.toLocaleString('en-US', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+        } catch (error) {
+            console.error('Error formatting timestamp:', error);
+            return 'Invalid date';
+        }
     };
 
     const getActionColor = (action) => {
@@ -200,6 +246,162 @@ const AuditLogs = () => {
         }
     };
 
+    const getReferenceNumber = (log) => {
+        if (log.action && log.action.includes('Update') && log.details) {
+            try {
+                const details = JSON.parse(log.details);
+                
+                // The reference number is stored directly in details.referenceNumber
+                if (details.referenceNumber) {
+                    return details.referenceNumber;
+                }
+                
+                // Fallback: check if it's in the response data
+                if (details.response && details.response.reference_number) {
+                    return details.response.reference_number;
+                }
+                
+                return 'N/A';
+            } catch (error) {
+                console.error('Error parsing audit log details:', error);
+                return 'N/A';
+            }
+        }
+        return 'N/A';
+    };
+
+    const handleViewDetails = (log) => {
+        setSelectedLog(log);
+        setShowDetailsModal(true);
+    };
+
+    const closeDetailsModal = () => {
+        setShowDetailsModal(false);
+        setSelectedLog(null);
+    };
+
+    const isFilterActive = () => {
+        // Check if any filter is active
+        return selectedQuickFilter !== '' || 
+               filters.action !== '' || 
+               filters.admin_username !== '' || 
+               filters.start_date !== '' || 
+               filters.end_date !== '' || 
+               filters.status !== 'all';
+    };
+
+    const exportToPDF = async () => {
+        // Only export if a filter is active
+        if (!isFilterActive()) {
+            return;
+        }
+
+        try {
+            // Fetch all data with current filters (no pagination)
+            const params = new URLSearchParams({
+                page: 1,
+                limit: 10000, // Large limit to get all records
+                ...filters
+            });
+
+            const response = await api.get(`/api/admin/audit-logs?${params}`);
+            
+            if (!response.data.success) {
+                alert('Failed to fetch data for export');
+                return;
+            }
+
+            // Backend now handles the filtering, so use data directly
+            const allLogs = response.data.data || [];
+
+            // Create a new window for PDF generation
+            const printWindow = window.open('', '_blank');
+            const currentDate = new Date().toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            // Get active filter information for the report
+            const getFilterInfo = () => {
+                if (selectedQuickFilter && selectedQuickFilter !== 'all') {
+                    const filter = QUICK_FILTERS.find(f => f.value === selectedQuickFilter);
+                    return `Filter: ${filter?.label || selectedQuickFilter}`;
+                }
+                
+                const activeFilters = [];
+                if (filters.action) activeFilters.push(`Action: ${filters.action}`);
+                if (filters.admin_username) activeFilters.push(`Admin: ${filters.admin_username}`);
+                if (filters.start_date) activeFilters.push(`From: ${new Date(filters.start_date).toLocaleDateString()}`);
+                if (filters.end_date) activeFilters.push(`To: ${new Date(filters.end_date).toLocaleDateString()}`);
+                if (filters.status && filters.status !== 'all') activeFilters.push(`Status: ${filters.status}`);
+                
+                return activeFilters.length > 0 ? `Filters: ${activeFilters.join(', ')}` : 'All Records';
+            };
+
+
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Audit Logs Report - ${currentDate}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; }
+                        .header { text-align: center; margin-bottom: 30px; }
+                        .header h1 { color: #333; margin-bottom: 5px; }
+                        .header p { color: #666; }
+                        .filter-info { background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; font-weight: bold; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+                        th { background-color: #f5f5f5; font-weight: bold; }
+                        .status-success { color: #28a745; font-weight: bold; }
+                        .status-failed { color: #dc3545; font-weight: bold; }
+                        .action-login { color: #28a745; }
+                        .action-logout { color: #6c757d; }
+                        .action-update { color: #007bff; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>Audit Logs Report</h1>
+                        <p>Generated on ${currentDate}</p>
+                        <div class="filter-info">${getFilterInfo()}</div>
+                        <p>Total Records: ${allLogs.length}</p>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Admin</th>
+                                <th>Action</th>
+                                <th>Status</th>
+                                <th>Reference Number</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${allLogs.map(log => `
+                                <tr>
+                                    <td>${formatTimestamp(log.philippine_timestamp || log.timestamp)}</td>
+                                    <td>${log.admin_username || 'System'}</td>
+                                    <td class="action-${log.action.toLowerCase().replace(' ', '-')}">${log.action}</td>
+                                    <td class="status-${getStatusClass(log.details)}">${getStatusFromDetails(log.details)}</td>
+                                    <td>${getReferenceNumber(log)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </body>
+                </html>
+            `);
+            
+            printWindow.document.close();
+            printWindow.print();
+        } catch (error) {
+            console.error('Error exporting data:', error);
+            alert('Failed to export data. Please try again.');
+        }
+    };
+
     if (loading && logs.length === 0) {
         return (
             <div className="audit-logs-container">
@@ -220,7 +422,17 @@ const AuditLogs = () => {
 
             {/* Quick Filters */}
             <div className="quick-filters">
-                <h3>Quick Filters</h3>
+                <div className="filters-header">
+                    <h3>Quick Filters</h3>
+                    <button 
+                        className={`export-btn ${!isFilterActive() ? 'disabled' : ''}`}
+                        onClick={exportToPDF}
+                        disabled={!isFilterActive()}
+                        title={!isFilterActive() ? "Please select a filter to export" : "Export to PDF"}
+                    >
+                        📄 Export PDF
+                    </button>
+                </div>
                 <div className="quick-filter-buttons">
                     {QUICK_FILTERS.map(filter => (
                         <button
@@ -357,8 +569,12 @@ const AuditLogs = () => {
                             <tr key={log.id}>
                                 <td className="timestamp">
                                     <div className="timestamp-content">
-                                        <div className="time">{formatTimestamp(log.timestamp)}</div>
-                                        <div className="date">{new Date(log.timestamp).toLocaleDateString()}</div>
+                                        <div className="time">{formatTimestamp(log.philippine_timestamp || log.timestamp)}</div>
+                                        <div className="date">{new Date(log.philippine_timestamp || log.timestamp).toLocaleDateString('en-US', {
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit'
+                                        })}</div>
                                     </div>
                                 </td>
                                 <td className="admin">
@@ -388,24 +604,7 @@ const AuditLogs = () => {
                                 <td className="details">
                                     <button 
                                         className="view-details-btn"
-                                        onClick={() => {
-                                            try {
-                                                const details = JSON.parse(log.details);
-                                                const formattedDetails = JSON.stringify(details, null, 2);
-                                                const modal = window.open('', '_blank', 'width=600,height=400');
-                                                modal.document.write(`
-                                                    <html>
-                                                        <head><title>Audit Log Details</title></head>
-                                                        <body style="font-family: monospace; padding: 20px; background: #f5f5f5;">
-                                                            <h3>Audit Log Details</h3>
-                                                            <pre style="background: white; padding: 15px; border-radius: 5px; overflow: auto;">${formattedDetails}</pre>
-                                                        </body>
-                                                    </html>
-                                                `);
-                                            } catch {
-                                                alert(log.details || 'No details available');
-                                            }
-                                        }}
+                                        onClick={() => handleViewDetails(log)}
                                         title="View detailed information"
                                     >
                                         View
@@ -446,6 +645,58 @@ const AuditLogs = () => {
             {logs.length === 0 && !loading && (
                 <div className="no-logs">
                     No audit logs found matching your criteria.
+                </div>
+            )}
+
+            {/* Details Modal */}
+            {showDetailsModal && selectedLog && (
+                <div className="modal-overlay" onClick={closeDetailsModal}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>Audit Log Details</h3>
+                            <button className="close-btn" onClick={closeDetailsModal}>
+                                <i className="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="detail-item">
+                                <span className="label">Timestamp:</span>
+                                <span className="value">{formatTimestamp(selectedLog.philippine_timestamp || selectedLog.timestamp)}</span>
+                            </div>
+                            <div className="detail-item">
+                                <span className="label">Admin:</span>
+                                <span className="value">{selectedLog.admin_username || 'System'}</span>
+                            </div>
+                            <div className="detail-item">
+                                <span className="label">Action:</span>
+                                <span className="value">{selectedLog.action}</span>
+                            </div>
+                            <div className="detail-item">
+                                <span className="label">Status:</span>
+                                <span className="value">{getStatusFromDetails(selectedLog.details)}</span>
+                            </div>
+                            <div className="detail-item">
+                                <span className="label">Reference Number:</span>
+                                <span className="value">{getReferenceNumber(selectedLog)}</span>
+                            </div>
+                            
+                            {selectedLog.details && (
+                                <div className="detail-item" style={{ display: 'block' }}>
+                                    <span className="label">Request Details:</span>
+                                    <div style={{ marginTop: 8, padding: 12, backgroundColor: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                                        <pre style={{ margin: 0, fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                            {JSON.stringify(JSON.parse(selectedLog.details), null, 2)}
+                                        </pre>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-secondary" onClick={closeDetailsModal}>
+                                Close
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
