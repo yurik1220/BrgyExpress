@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import api from "../lib/fetch";
 import ConfirmationModal from "../components/ConfirmationModal";
+import Watermark from "../components/Watermark";
 import "../styles/AnnouncementPage.css";
 
 const AnnouncementPage = () => {
@@ -149,6 +150,8 @@ const AnnouncementPage = () => {
 
     return (
         <div className="announcement-page-container">
+            <Watermark />
+            
             {/* Enhanced Header */}
             <div className="content-header">
                 <div className="header-content">
@@ -195,10 +198,6 @@ const AnnouncementPage = () => {
                         </div>
                         <h3>No Announcements Yet</h3>
                         <p>Click "New Announcement" to get started!</p>
-                        <button className="create-first-btn" onClick={() => setShowForm(true)}>
-                            <i className="fas fa-plus"></i>
-                            Create First Announcement
-                        </button>
                     </div>
                 ) : (
                     announcements.map(announcement => (

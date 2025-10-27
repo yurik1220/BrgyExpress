@@ -200,3 +200,5 @@ export function isServiceWorkerSupported() {
 export function isServiceWorkerActive() {
   return navigator.serviceWorker.controller !== null;
 }
+
+

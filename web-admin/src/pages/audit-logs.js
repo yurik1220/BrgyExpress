@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../lib/fetch';
+import Watermark from '../components/Watermark';
 import '../styles/AuditLogs.css';
 
 // Quick filter presets
@@ -412,27 +413,26 @@ const AuditLogs = () => {
 
     return (
         <div className="audit-logs-container">
+            <Watermark />
+            
             <div className="audit-logs-header">
                 <div className="header-content">
                     <h1>Audit Logs</h1>
                     <p>Track all administrative actions and system activities</p>
                 </div>
+                <button 
+                    className={`export-btn ${isFilterActive() ? 'active' : 'disabled'}`}
+                    onClick={exportToPDF}
+                    disabled={!isFilterActive()}
+                    title={!isFilterActive() ? "Please select a filter to export" : "Export to PDF"}
+                >
+                    📄 Export PDF
+                </button>
             </div>
-
 
             {/* Quick Filters */}
             <div className="quick-filters">
-                <div className="filters-header">
-                    <h3>Quick Filters</h3>
-                    <button 
-                        className={`export-btn ${!isFilterActive() ? 'disabled' : ''}`}
-                        onClick={exportToPDF}
-                        disabled={!isFilterActive()}
-                        title={!isFilterActive() ? "Please select a filter to export" : "Export to PDF"}
-                    >
-                        📄 Export PDF
-                    </button>
-                </div>
+                <h3>Quick Filters</h3>
                 <div className="quick-filter-buttons">
                     {QUICK_FILTERS.map(filter => (
                         <button

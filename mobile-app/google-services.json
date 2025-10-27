@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "5985743439",
+    "project_id": "brgyexpress-notification",
+    "storage_bucket": "brgyexpress-notification.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:5985743439:android:cfa2d4b2cea037635b303a",
+        "android_client_info": {
+          "package_name": "com.yurik1220.brgyexpress"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDKn0823ltbjkI0HmfKJ93RBeWXm-cpyq4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

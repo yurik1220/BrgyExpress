@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import api from "../lib/fetch";
+import Watermark from "../components/Watermark";
+import ProtectedUploadImage from "../components/ProtectedUploadImage";
 import "../styles/DocumentRequests.css";
 import "../styles/AccountMaintenance.css";
 
@@ -18,6 +20,10 @@ const AccountMaintenance = () => {
     const [showDetail, setShowDetail] = useState(false);
     const [saving, setSaving] = useState(false);
     const [previewSrc, setPreviewSrc] = useState(null);
+    const [blurredImages, setBlurredImages] = useState({
+        selfie: true,
+        id: true
+    });
 
     // Utility: build absolute image URL from possible fields
     const API_BASE = process.env.REACT_APP_API_URL || window.__API_BASE__ || "http://localhost:5000";
@@ -106,6 +112,8 @@ const AccountMaintenance = () => {
 
     return (
         <div className="requests-container">
+            <Watermark />
+            
             <div className="content-header">
                 <div className="header-content">
                     <div className="header-icon-wrapper">
@@ -268,12 +276,69 @@ const AccountMaintenance = () => {
                                             <span style={{ fontWeight: 600 }}>Uploaded Selfie</span>
                                         </div>
                                         {toAbsoluteUrl(pickFirst(selectedUser, ['selfie_image_url','selfie_image','selfieImageUrl','selfieImagePath','selfieImage'])) ? (
-                                            <img
-                                                src={toAbsoluteUrl(pickFirst(selectedUser, ['selfie_image_url','selfie_image','selfieImageUrl','selfieImagePath','selfieImage']))}
-                                                alt="Selfie"
-                                                style={{ width: '100%', maxHeight: 180, objectFit: 'contain', background: '#f8fafc', borderRadius: 8, cursor: 'pointer' }}
-                                                onClick={() => setPreviewSrc(toAbsoluteUrl(pickFirst(selectedUser, ['selfie_image_url','selfie_image','selfieImageUrl','selfieImagePath','selfieImage'])))}
-                                            />
+                                            <div style={{ position: 'relative' }}>
+                                                <ProtectedUploadImage
+                                                    src={toAbsoluteUrl(pickFirst(selectedUser, ['selfie_image_url','selfie_image','selfieImageUrl','selfieImagePath','selfieImage']))}
+                                                    alt="Selfie"
+                                                    style={{ 
+                                                        width: '100%', 
+                                                        maxHeight: 180, 
+                                                        objectFit: 'contain', 
+                                                        background: '#f8fafc', 
+                                                        borderRadius: 8,
+                                                        filter: blurredImages.selfie ? 'blur(10px)' : 'none',
+                                                        transition: 'filter 0.3s ease'
+                                                    }}
+                                                />
+                                                {blurredImages.selfie && (
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setBlurredImages(prev => ({ ...prev, selfie: false })); }}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            top: '50%',
+                                                            left: '50%',
+                                                            transform: 'translate(-50%, -50%)',
+                                                            background: 'rgba(0, 0, 0, 0.8)',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '10px 20px',
+                                                            borderRadius: 8,
+                                                            cursor: 'pointer',
+                                                            fontSize: 13,
+                                                            fontWeight: 600,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: 6,
+                                                            zIndex: 10
+                                                        }}
+                                                    >
+                                                        <i className="fas fa-eye"></i> View
+                                                    </button>
+                                                )}
+                                                {!blurredImages.selfie && (
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setPreviewSrc(toAbsoluteUrl(pickFirst(selectedUser, ['selfie_image_url','selfie_image','selfieImageUrl','selfieImagePath','selfieImage']))); }}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            top: 8,
+                                                            right: 8,
+                                                            background: 'rgba(0, 0, 0, 0.7)',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '6px 12px',
+                                                            borderRadius: 6,
+                                                            cursor: 'pointer',
+                                                            fontSize: 12,
+                                                            fontWeight: 600,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: 4
+                                                        }}
+                                                    >
+                                                        <i className="fas fa-expand"></i> View Full
+                                                    </button>
+                                                )}
+                                            </div>
                                         ) : (
                                             <div style={{ fontSize: 13, color: '#6b7280' }}>No selfie image</div>
                                         )}
@@ -283,12 +348,69 @@ const AccountMaintenance = () => {
                                             <span style={{ fontWeight: 600 }}>Valid ID</span>
                                         </div>
                                         {toAbsoluteUrl(pickFirst(selectedUser, ['id_image_url','id_image','idImageUrl','idImagePath','idImage'])) ? (
-                                            <img
-                                                src={toAbsoluteUrl(pickFirst(selectedUser, ['id_image_url','id_image','idImageUrl','idImagePath','idImage']))}
-                                                alt="Valid ID"
-                                                style={{ width: '100%', maxHeight: 180, objectFit: 'contain', background: '#f8fafc', borderRadius: 8, cursor: 'pointer' }}
-                                                onClick={() => setPreviewSrc(toAbsoluteUrl(pickFirst(selectedUser, ['id_image_url','id_image','idImageUrl','idImagePath','idImage'])))}
-                                            />
+                                            <div style={{ position: 'relative' }}>
+                                                <ProtectedUploadImage
+                                                    src={toAbsoluteUrl(pickFirst(selectedUser, ['id_image_url','id_image','idImageUrl','idImagePath','idImage']))}
+                                                    alt="Valid ID"
+                                                    style={{ 
+                                                        width: '100%', 
+                                                        maxHeight: 180, 
+                                                        objectFit: 'contain', 
+                                                        background: '#f8fafc', 
+                                                        borderRadius: 8,
+                                                        filter: blurredImages.id ? 'blur(10px)' : 'none',
+                                                        transition: 'filter 0.3s ease'
+                                                    }}
+                                                />
+                                                {blurredImages.id && (
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setBlurredImages(prev => ({ ...prev, id: false })); }}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            top: '50%',
+                                                            left: '50%',
+                                                            transform: 'translate(-50%, -50%)',
+                                                            background: 'rgba(0, 0, 0, 0.8)',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '10px 20px',
+                                                            borderRadius: 8,
+                                                            cursor: 'pointer',
+                                                            fontSize: 13,
+                                                            fontWeight: 600,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: 6,
+                                                            zIndex: 10
+                                                        }}
+                                                    >
+                                                        <i className="fas fa-eye"></i> View
+                                                    </button>
+                                                )}
+                                                {!blurredImages.id && (
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setPreviewSrc(toAbsoluteUrl(pickFirst(selectedUser, ['id_image_url','id_image','idImageUrl','idImagePath','idImage']))); }}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            top: 8,
+                                                            right: 8,
+                                                            background: 'rgba(0, 0, 0, 0.7)',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '6px 12px',
+                                                            borderRadius: 6,
+                                                            cursor: 'pointer',
+                                                            fontSize: 12,
+                                                            fontWeight: 600,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: 4
+                                                        }}
+                                                    >
+                                                        <i className="fas fa-expand"></i> View Full
+                                                    </button>
+                                                )}
+                                            </div>
                                         ) : (
                                             <div style={{ fontSize: 13, color: '#6b7280' }}>No ID image</div>
                                         )}
@@ -337,7 +459,7 @@ const AccountMaintenance = () => {
                             </button>
                         </div>
                         <div className="modal-body">
-                            <img src={previewSrc} alt="Preview" style={{ width: '100%', maxHeight: 600, objectFit: 'contain', borderRadius: 8 }} />
+                            <ProtectedUploadImage src={previewSrc} alt="Preview" style={{ width: '100%', maxHeight: 600, objectFit: 'contain', borderRadius: 8 }} />
                         </div>
                     </div>
                 </div>

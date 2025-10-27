@@ -101,3 +101,5 @@ console.log('\n📚 Documentation:');
 console.log('- See OFFLINE_SETUP.md for detailed usage instructions');
 console.log('- Check public/sw.js for service worker implementation');
 console.log('- Review src/components/OfflineIndicator.js for UI component');
+
+

@@ -186,3 +186,5 @@ console.log('  - index.html (Updated with SW registration)');
 console.log('  - sw-test.html (Test page)');
 console.log('');
 console.log('🚀 Ready for deployment!');
+
+

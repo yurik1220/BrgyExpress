@@ -10,10 +10,87 @@ import { LogBox } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import LoadingScreen from "@/components/LoadingScreen";
+import AccountStatusCheck from "@/components/AccountStatusCheck";
+import NotificationInitializer from "@/components/NotificationInitializer";
 
 
-// Initialize React Query client
-const queryClient = new QueryClient();
+// Initialize React Query client with custom error handling
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error: any) => {
+        // Don't retry for user-facing errors that are handled in UI
+        const errorMessage = error?.message || '';
+        if (errorMessage.includes('403') && errorMessage.includes('Account Disabled')) {
+          return false;
+        }
+        return failureCount < 3;
+      },
+      onError: (error: any) => {
+        // Suppress console errors for user-facing errors that are handled in UI
+        const errorMessage = error?.message || '';
+        const isNetworkError = (
+          errorMessage.includes('network') ||
+          errorMessage.includes('timeout') ||
+          errorMessage.includes('fetch') ||
+          errorMessage.includes('Failed to fetch') ||
+          errorMessage.includes('Network request failed') ||
+          errorMessage.includes('Connection') ||
+          errorMessage.includes('ECONNREFUSED') ||
+          errorMessage.includes('ENOTFOUND') ||
+          errorMessage.includes('ETIMEDOUT')
+        );
+        
+        const shouldSuppressLog = (
+          errorMessage.includes('403') && (errorMessage.includes('Account Disabled') || errorMessage.includes('Account Disabled. Please contact Barangay')) ||
+          errorMessage.includes('401') ||
+          errorMessage.includes('400') ||
+          errorMessage.includes('404') ||
+          errorMessage.includes('409') ||
+          (errorMessage.includes('404') && errorMessage.includes('User not found')) ||
+          errorMessage.includes('User not authenticated') ||
+          isNetworkError
+        );
+        
+        if (!shouldSuppressLog) {
+          console.error("Query error:", error);
+        }
+      }
+    },
+    mutations: {
+      onError: (error: any) => {
+        // Suppress console errors for user-facing errors that are handled in UI
+        const errorMessage = error?.message || '';
+        const isNetworkError = (
+          errorMessage.includes('network') ||
+          errorMessage.includes('timeout') ||
+          errorMessage.includes('fetch') ||
+          errorMessage.includes('Failed to fetch') ||
+          errorMessage.includes('Network request failed') ||
+          errorMessage.includes('Connection') ||
+          errorMessage.includes('ECONNREFUSED') ||
+          errorMessage.includes('ENOTFOUND') ||
+          errorMessage.includes('ETIMEDOUT')
+        );
+        
+        const shouldSuppressLog = (
+          errorMessage.includes('403') && (errorMessage.includes('Account Disabled') || errorMessage.includes('Account Disabled. Please contact Barangay')) ||
+          errorMessage.includes('401') ||
+          errorMessage.includes('400') ||
+          errorMessage.includes('404') ||
+          errorMessage.includes('409') ||
+          (errorMessage.includes('404') && errorMessage.includes('User not found')) ||
+          errorMessage.includes('User not authenticated') ||
+          isNetworkError
+        );
+        
+        if (!shouldSuppressLog) {
+          console.error("Mutation error:", error);
+        }
+      }
+    }
+  }
+});
 
 SplashScreen.preventAutoHideAsync();
 
@@ -56,15 +133,20 @@ export default function RootLayout() {
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
           <QueryClientProvider client={queryClient}>
             <ClerkLoaded>
-              <Stack>
-                <Stack.Screen name="index" options={{ headerShown: false }} />
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                <Stack.Screen name="(root)" options={{ headerShown: false }} />
-                <Stack.Screen name="+not-found" />
-              </Stack>
+              <AccountStatusCheck>
+                <Stack>
+                  <Stack.Screen name="index" options={{ headerShown: false }} />
+                  <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                  <Stack.Screen name="(root)" options={{ headerShown: false }} />
+                  <Stack.Screen name="+not-found" />
+                </Stack>
+              </AccountStatusCheck>
+              <NotificationInitializer />
             </ClerkLoaded>
           </QueryClientProvider>
         </ClerkProvider>
       </GestureHandlerRootView>
   );
 }
+
+export default RootLayout;

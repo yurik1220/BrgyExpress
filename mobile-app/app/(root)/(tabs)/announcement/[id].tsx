@@ -292,7 +292,7 @@ export default function AnnouncementDetail() {
                                     {announcement.title}
                                 </Text>
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Ionicons name="time-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
+                                    <Ionicons name="calendar-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
                                     <Text style={{ 
                                         color: '#6b7280', 
                                         fontSize: 15,
@@ -302,9 +302,7 @@ export default function AnnouncementDetail() {
                                             weekday: 'long',
                                             year: 'numeric',
                                             month: 'long',
-                                            day: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit'
+                                            day: 'numeric'
                                         })}
                                     </Text>
                                 </View>

@@ -65,7 +65,6 @@ const DetailsScreen = () => {
   const params = useLocalSearchParams();
   const router = useRouter();
   const fromSubmission = params.fromSubmission === 'true';
-
   const {
     type,
     document_type,
@@ -88,16 +87,36 @@ const DetailsScreen = () => {
     referenceNumber
   } = params;
 
+  const formatToManilaDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+      
+      // Format only the date using toLocaleString with Manila timezone
+      return date.toLocaleString("en-US", {
+        timeZone: "Asia/Manila",
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit'
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
+  };
+
   const formattedCreatedAt = created_at
-    ? format(new Date(created_at as string), 'MMM dd, yyyy hh:mm a')
+    ? formatToManilaDate(created_at as string)
     : 'Not available';
 
   const formattedResolvedAt = resolved_at
-    ? format(new Date(resolved_at as string), 'MMM dd, yyyy hh:mm a')
+    ? formatToManilaDate(resolved_at as string)
     : 'Not resolved';
 
   const formattedAppointmentDate = appointment_date
-    ? format(new Date(appointment_date as string), 'MMM dd, yyyy hh:mm a')
+    ? formatToManilaDate(appointment_date as string)
     : 'Not scheduled';
 
   const handleLocationPress = () => {
@@ -209,7 +228,6 @@ const DetailsScreen = () => {
             </Text>
           </View>
         )}
-        <DetailRow icon="person" label="Submitted by" value={clerk_id as string} iconType="ion" />
         <DetailRow icon="calendar" label="Date Submitted" value={formattedCreatedAt} iconType="ion" />
         {status && <DetailRow icon="time" label="Date Resolved" value={formattedResolvedAt} iconType="ion" />}
         {rejection_reason && (

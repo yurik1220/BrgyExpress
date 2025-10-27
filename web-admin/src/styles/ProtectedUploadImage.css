@@ -1,0 +1,30 @@
+/* Protected Upload Image Wrapper */
+.upload-img-wrapper {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+
+.upload-img-wrapper img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    user-select: none;
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+}
+
+.upload-img-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: transparent;
+    pointer-events: auto;
+    cursor: default;
+}
+

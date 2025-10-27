@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import api from "../lib/fetch";
 import { Link, useNavigate } from "react-router-dom";
 import IncidentMap from "../components/IncidentMap";
+import Watermark from "../components/Watermark";
 import '../styles/Dashboard.css';
 
 const Dashboard = () => {
@@ -80,8 +81,6 @@ const Dashboard = () => {
 
     const { timeString, dateString } = formatManilaTime();
 
-
-
     const getStatusColor = (status) => {
         switch (status) {
             case 'approved': return 'success';
@@ -152,6 +151,8 @@ const Dashboard = () => {
 
     return (
         <div className="dashboard-container">
+            <Watermark />
+            
             {/* Header Section */}
             <div className="dashboard-header">
                 <div className="header-content">

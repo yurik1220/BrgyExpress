@@ -1,6 +1,13 @@
+/* ===== WATERMARK STYLES ===== */
+.dashboard-watermark {
+    /* Styles are applied inline in Watermark component */
+}
+
 /* ===== INCIDENT REPORTS STYLES ===== */
 
 .incident-reports-container {
+    position: relative;
+    overflow: hidden;
     padding: 24px;
     background: #f8fafc;
     min-height: 100vh;

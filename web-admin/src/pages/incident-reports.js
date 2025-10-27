@@ -8,6 +8,8 @@
 //   PATCH /api/incidents/:id with status ∈ { in_progress, closed }
 import React, { useState, useEffect } from "react";
 import api from "../lib/fetch";
+import Watermark from "../components/Watermark";
+import ProtectedUploadImage from "../components/ProtectedUploadImage";
 import "../styles/IncidentReports.css";
 
 const IncidentReports = () => {
@@ -24,6 +26,7 @@ const IncidentReports = () => {
     const [mapUrl, setMapUrl] = useState("");
     const [previewSrc, setPreviewSrc] = useState(null);
     const [searchRef, setSearchRef] = useState("");
+    const [isBlurred, setIsBlurred] = useState({ media: true, selfie: true });
 
     // Normalize relative vs absolute media URLs
     const API_BASE = process.env.REACT_APP_API_URL || window.__API_BASE__ || 'http://localhost:5000';
@@ -136,6 +139,8 @@ const IncidentReports = () => {
 
     return (
         <div className="incident-reports-container">
+            <Watermark />
+            
             {/* Enhanced Header */}
             <div className="content-header">
                 <div className="header-content">
@@ -311,7 +316,68 @@ const IncidentReports = () => {
                                                 Your browser does not support the video tag.
                                             </video>
                                         ) : (
-                                            <img src={toAbsoluteUrl(selectedReport.media_url)} alt="Incident media" style={{ width: '100%', maxHeight: 360, objectFit: 'cover', background: '#f8fafc', cursor: 'pointer' }} onClick={() => setPreviewSrc(toAbsoluteUrl(selectedReport.media_url))} />
+                                            <div style={{ position: 'relative' }}>
+                                                <ProtectedUploadImage 
+                                                    src={toAbsoluteUrl(selectedReport.media_url)} 
+                                                    alt="Incident media" 
+                                                    style={{ 
+                                                        width: '100%', 
+                                                        maxHeight: 360, 
+                                                        objectFit: 'cover', 
+                                                        background: '#f8fafc',
+                                                        filter: isBlurred.media ? 'blur(10px)' : 'none',
+                                                        transition: 'filter 0.3s ease'
+                                                    }} 
+                                                />
+                                                {isBlurred.media && (
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setIsBlurred(prev => ({ ...prev, media: false })); }}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            top: '50%',
+                                                            left: '50%',
+                                                            transform: 'translate(-50%, -50%)',
+                                                            background: 'rgba(0, 0, 0, 0.8)',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '10px 20px',
+                                                            borderRadius: 8,
+                                                            cursor: 'pointer',
+                                                            fontSize: 13,
+                                                            fontWeight: 600,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: 6,
+                                                            zIndex: 10
+                                                        }}
+                                                    >
+                                                        <i className="fas fa-eye"></i> View
+                                                    </button>
+                                                )}
+                                                {!isBlurred.media && (
+                                                    <button 
+                                                        onClick={() => setPreviewSrc(toAbsoluteUrl(selectedReport.media_url))}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            top: 8,
+                                                            right: 8,
+                                                            background: 'rgba(0, 0, 0, 0.7)',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '6px 12px',
+                                                            borderRadius: 6,
+                                                            cursor: 'pointer',
+                                                            fontSize: 12,
+                                                            fontWeight: 600,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: 4
+                                                        }}
+                                                    >
+                                                        <i className="fas fa-expand"></i> View Full
+                                                    </button>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 )}
@@ -343,8 +409,70 @@ const IncidentReports = () => {
                                   const src = toAbsoluteUrl(selectedReport.requester_selfie || selectedReport.selfie_image_url);
                                   return src ? (
                                     <div style={{ marginTop: 8 }}>
-                                      <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>Selfie</div>
-                                      <img src={src} alt="Reporter Selfie" style={{ width: '100%', maxHeight: 140, objectFit: 'contain', borderRadius: 8, background: '#f8fafc', cursor: 'pointer' }} onClick={() => setPreviewSrc(src)} />
+                                      <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>Requester's Image</div>
+                                      <div style={{ position: 'relative' }}>
+                                        <ProtectedUploadImage 
+                                            src={src} 
+                                            alt="Reporter Selfie" 
+                                            style={{ 
+                                                width: '100%', 
+                                                maxHeight: 140, 
+                                                objectFit: 'contain', 
+                                                borderRadius: 8, 
+                                                background: '#f8fafc',
+                                                filter: isBlurred.selfie ? 'blur(10px)' : 'none',
+                                                transition: 'filter 0.3s ease'
+                                            }} 
+                                        />
+                                        {isBlurred.selfie && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setIsBlurred(prev => ({ ...prev, selfie: false })); }}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: '50%',
+                                                    left: '50%',
+                                                    transform: 'translate(-50%, -50%)',
+                                                    background: 'rgba(0, 0, 0, 0.8)',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    padding: '10px 20px',
+                                                    borderRadius: 8,
+                                                    cursor: 'pointer',
+                                                    fontSize: 13,
+                                                    fontWeight: 600,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 6,
+                                                    zIndex: 10
+                                                }}
+                                            >
+                                                <i className="fas fa-eye"></i> View
+                                            </button>
+                                        )}
+                                        {!isBlurred.selfie && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setPreviewSrc(src); }}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: 8,
+                                                    right: 8,
+                                                    background: 'rgba(0, 0, 0, 0.7)',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    padding: '6px 12px',
+                                                    borderRadius: 6,
+                                                    cursor: 'pointer',
+                                                    fontSize: 12,
+                                                    fontWeight: 600,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 4
+                                                }}
+                                            >
+                                                <i className="fas fa-expand"></i> View Full
+                                            </button>
+                                        )}
+                                      </div>
                                     </div>
                                   ) : null;
                                 })()}
@@ -389,7 +517,7 @@ const IncidentReports = () => {
                             </button>
                         </div>
                         <div className="modal-body">
-                            <img src={previewSrc} alt="Preview" style={{ width: '100%', maxHeight: 600, objectFit: 'contain', borderRadius: 8 }} />
+                            <ProtectedUploadImage src={previewSrc} alt="Preview" style={{ width: '100%', maxHeight: 600, objectFit: 'contain', borderRadius: 8 }} />
                         </div>
                     </div>
                 </div>

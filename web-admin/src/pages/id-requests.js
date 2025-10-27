@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import api from "../lib/fetch";
+import Watermark from "../components/Watermark";
+import ProtectedUploadImage from "../components/ProtectedUploadImage";
 import "../styles/IdRequests.css";
 
 const IdRequests = () => {
@@ -17,6 +19,12 @@ const IdRequests = () => {
     const [analysis, setAnalysis] = useState({ id: null, selfie: null });
     const [analysisLoading, setAnalysisLoading] = useState(false);
     const [analysisError, setAnalysisError] = useState(null);
+    const [previewSrc, setPreviewSrc] = useState(null);
+    const [blurredImages, setBlurredImages] = useState({
+        governmentId: true,
+        selfie: true,
+        bill: true
+    });
 
     // Utility: build absolute image URL from possible fields
     const API_BASE = process.env.REACT_APP_API_URL || window.__API_BASE__ || "http://localhost:5000";
@@ -183,6 +191,8 @@ const IdRequests = () => {
 
     return (
         <div className="id-requests-container">
+            <Watermark />
+            
             {/* Enhanced Header */}
             <div className="content-header">
                 <div className="header-content">
@@ -470,8 +480,69 @@ const IdRequests = () => {
                                             ]);
                                             const src = toAbsoluteUrl(idVal);
                                             return src ? (
-                                                <>
-                                                    <img src={src} alt="Government ID" style={{ width: '100%', height: 200, objectFit: 'cover', borderRadius: 8 }} />
+                                                    <>
+                                                    <div style={{ position: 'relative' }}>
+                                                        <ProtectedUploadImage 
+                                                            src={src} 
+                                                            alt="Government ID" 
+                                                            style={{ 
+                                                                width: '100%', 
+                                                                height: 200, 
+                                                                objectFit: 'cover', 
+                                                                borderRadius: 8,
+                                                                filter: blurredImages.governmentId ? 'blur(10px)' : 'none',
+                                                                transition: 'filter 0.3s ease'
+                                                            }} 
+                                                        />
+                                                        {blurredImages.governmentId && (
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setBlurredImages(prev => ({ ...prev, governmentId: false })); }}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    top: '50%',
+                                                                    left: '50%',
+                                                                    transform: 'translate(-50%, -50%)',
+                                                                    background: 'rgba(0, 0, 0, 0.8)',
+                                                                    color: 'white',
+                                                                    border: 'none',
+                                                                    padding: '10px 20px',
+                                                                    borderRadius: 8,
+                                                                    cursor: 'pointer',
+                                                                    fontSize: 13,
+                                                                    fontWeight: 600,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 6,
+                                                                    zIndex: 10
+                                                                }}
+                                                            >
+                                                                <i className="fas fa-eye"></i> View
+                                                            </button>
+                                                        )}
+                                                        {!blurredImages.governmentId && (
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setPreviewSrc(src); }}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    top: 8,
+                                                                    right: 8,
+                                                                    background: 'rgba(0, 0, 0, 0.7)',
+                                                                    color: 'white',
+                                                                    border: 'none',
+                                                                    padding: '6px 12px',
+                                                                    borderRadius: 6,
+                                                                    cursor: 'pointer',
+                                                                    fontSize: 12,
+                                                                    fontWeight: 600,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 4
+                                                                }}
+                                                            >
+                                                                <i className="fas fa-expand"></i> View Full
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                     {analysis?.id && !analysis?.id?.error && typeof analysis.id.prob === 'number' && (
                                                         (() => {
                                                             const threshold = Math.max(analysis.id.threshold || 0.7, 0.7);
@@ -512,8 +583,69 @@ const IdRequests = () => {
                                             ]);
                                             const src = toAbsoluteUrl(selfieVal);
                                             return src ? (
-                                                <>
-                                                    <img src={src} alt="Live Selfie" style={{ width: '100%', height: 200, objectFit: 'cover', borderRadius: 8 }} />
+                                                    <>
+                                                    <div style={{ position: 'relative' }}>
+                                                        <ProtectedUploadImage 
+                                                            src={src} 
+                                                            alt="Live Selfie" 
+                                                            style={{ 
+                                                                width: '100%', 
+                                                                height: 200, 
+                                                                objectFit: 'cover', 
+                                                                borderRadius: 8,
+                                                                filter: blurredImages.selfie ? 'blur(10px)' : 'none',
+                                                                transition: 'filter 0.3s ease'
+                                                            }} 
+                                                        />
+                                                        {blurredImages.selfie && (
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setBlurredImages(prev => ({ ...prev, selfie: false })); }}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    top: '50%',
+                                                                    left: '50%',
+                                                                    transform: 'translate(-50%, -50%)',
+                                                                    background: 'rgba(0, 0, 0, 0.8)',
+                                                                    color: 'white',
+                                                                    border: 'none',
+                                                                    padding: '10px 20px',
+                                                                    borderRadius: 8,
+                                                                    cursor: 'pointer',
+                                                                    fontSize: 13,
+                                                                    fontWeight: 600,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 6,
+                                                                    zIndex: 10
+                                                                }}
+                                                            >
+                                                                <i className="fas fa-eye"></i> View
+                                                            </button>
+                                                        )}
+                                                        {!blurredImages.selfie && (
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setPreviewSrc(src); }}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    top: 8,
+                                                                    right: 8,
+                                                                    background: 'rgba(0, 0, 0, 0.7)',
+                                                                    color: 'white',
+                                                                    border: 'none',
+                                                                    padding: '6px 12px',
+                                                                    borderRadius: 6,
+                                                                    cursor: 'pointer',
+                                                                    fontSize: 12,
+                                                                    fontWeight: 600,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 4
+                                                                }}
+                                                            >
+                                                                <i className="fas fa-expand"></i> View Full
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                     {analysis?.selfie && !analysis?.selfie?.error && typeof analysis.selfie.prob === 'number' && (
                                                         (() => {
                                                             const threshold = Math.max(analysis.selfie.threshold || 0.7, 0.7);
@@ -553,8 +685,69 @@ const IdRequests = () => {
                                             ]);
                                             const src = toAbsoluteUrl(billVal);
                                             return src ? (
-                                                <>
-                                                    <img src={src} alt="Meralco Bill" style={{ width: '100%', height: 200, objectFit: 'cover', borderRadius: 8 }} />
+                                                    <>
+                                                    <div style={{ position: 'relative' }}>
+                                                        <ProtectedUploadImage 
+                                                            src={src} 
+                                                            alt="Meralco Bill" 
+                                                            style={{ 
+                                                                width: '100%', 
+                                                                height: 200, 
+                                                                objectFit: 'cover', 
+                                                                borderRadius: 8,
+                                                                filter: blurredImages.bill ? 'blur(10px)' : 'none',
+                                                                transition: 'filter 0.3s ease'
+                                                            }} 
+                                                        />
+                                                        {blurredImages.bill && (
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setBlurredImages(prev => ({ ...prev, bill: false })); }}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    top: '50%',
+                                                                    left: '50%',
+                                                                    transform: 'translate(-50%, -50%)',
+                                                                    background: 'rgba(0, 0, 0, 0.8)',
+                                                                    color: 'white',
+                                                                    border: 'none',
+                                                                    padding: '10px 20px',
+                                                                    borderRadius: 8,
+                                                                    cursor: 'pointer',
+                                                                    fontSize: 13,
+                                                                    fontWeight: 600,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 6,
+                                                                    zIndex: 10
+                                                                }}
+                                                            >
+                                                                <i className="fas fa-eye"></i> View
+                                                            </button>
+                                                        )}
+                                                        {!blurredImages.bill && (
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setPreviewSrc(src); }}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    top: 8,
+                                                                    right: 8,
+                                                                    background: 'rgba(0, 0, 0, 0.7)',
+                                                                    color: 'white',
+                                                                    border: 'none',
+                                                                    padding: '6px 12px',
+                                                                    borderRadius: 6,
+                                                                    cursor: 'pointer',
+                                                                    fontSize: 12,
+                                                                    fontWeight: 600,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 4
+                                                                }}
+                                                            >
+                                                                <i className="fas fa-expand"></i> View Full
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                     {analysis?.bill && !analysis?.bill?.error && typeof analysis.bill.prob === 'number' && (
                                                         (() => {
                                                             const threshold = Math.max(analysis.bill.threshold || 0.7, 0.7);
@@ -672,6 +865,23 @@ const IdRequests = () => {
                             >
                                 {actionType === "approved" ? "Approve Request" : "Reject Request"}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Image Preview Modal */}
+            {previewSrc && (
+                <div className="modal-overlay" onClick={() => setPreviewSrc(null)}>
+                    <div className="modal" style={{ maxWidth: 900 }} onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>Image Preview</h3>
+                            <button className="close-btn" onClick={() => setPreviewSrc(null)}>
+                                <i className="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <ProtectedUploadImage src={previewSrc} alt="Preview" style={{ width: '100%', maxHeight: 600, objectFit: 'contain', borderRadius: 8 }} />
                         </div>
                     </div>
                 </div>

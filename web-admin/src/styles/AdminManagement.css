@@ -1,5 +1,12 @@
+/* ===== WATERMARK STYLES ===== */
+.dashboard-watermark {
+    /* Styles are applied inline in Watermark component */
+}
+
 /* Admin Management Styles */
 .admin-management-container {
+    position: relative;
+    overflow: hidden;
     padding: 2rem;
     max-width: 1200px;
     margin: 0 auto;

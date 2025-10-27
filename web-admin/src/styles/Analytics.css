@@ -1,6 +1,13 @@
+/* ===== WATERMARK STYLES ===== */
+.dashboard-watermark {
+    /* Styles are applied inline in Watermark component */
+}
+
 /* ===== ANALYTICS STYLES ===== */
 
 .analytics-container {
+    position: relative;
+    overflow: hidden;
     padding: 16px;
     background: #f8fafc;
     min-height: 100vh;

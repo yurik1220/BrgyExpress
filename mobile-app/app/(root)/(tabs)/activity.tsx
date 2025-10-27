@@ -64,9 +64,13 @@ const Activity = () => {
             try {
                 if (userId) {
                     cleanup = await initNotificationSystem(userId, navigation);
+                    if (!cleanup) {
+                        console.warn('Notifications not available in activity screen');
+                    }
                 }
             } catch (error) {
-                console.error('Notification setup error:', error);
+                // Suppress error logging for notification setup
+                // Don't crash the app if notifications fail
             }
         };
         setupNotifications();
@@ -310,25 +314,15 @@ const Activity = () => {
                         </Text>
                     </View>
 
-                    {/* Footer with Status and Time */}
+                    {/* Footer with Status */}
                     <View style={{ 
                         flexDirection: 'row', 
                         alignItems: 'center', 
-                        justifyContent: 'space-between',
+                        justifyContent: 'flex-end',
                         paddingTop: 12,
                         borderTopWidth: 1,
                         borderTopColor: '#f1f5f9'
                     }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Ionicons name="time-outline" size={14} color="#9ca3af" style={{ marginRight: 4 }} />
-                            <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '500' }}>
-                                {new Date(item.created_at).toLocaleTimeString('en-US', { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit' 
-                                })}
-                            </Text>
-                        </View>
-
                         {item.status && (
                             <View style={{
                                 backgroundColor: statusBadgeStyle.backgroundColor,
@@ -375,7 +369,7 @@ const Activity = () => {
                         }}>
                             <Ionicons name="calendar" size={16} color="#16a34a" style={{ marginRight: 8 }} />
                             <Text style={{ color: '#16a34a', fontSize: 13, fontWeight: '600', flex: 1 }}>
-                                Pickup: {new Date(item.appointment_date).toLocaleDateString()} at {new Date(item.appointment_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                Pickup: {new Date(item.appointment_date).toLocaleDateString()}
                             </Text>
                         </View>
                     )}

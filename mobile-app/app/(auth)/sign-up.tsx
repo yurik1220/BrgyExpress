@@ -3,7 +3,7 @@ import { icons, images } from "@/constants";
 import InputField from "@/components/InputField";
 import React, { useState } from "react";
 import CustomButton from "@/components/CustomButton";
-import { useSignUp } from "@clerk/clerk-expo";
+import { useSignUp, useAuth } from "@clerk/clerk-expo";
 import { Link, router } from "expo-router";
 import Modal from "react-native-modal";
 import { fetchAPI } from "@/lib/fetch";
@@ -15,6 +15,7 @@ const { width } = Dimensions.get("window");
 
 const SignUp = () => {
   const { isLoaded, signUp, setActive } = useSignUp();
+  const { signOut } = useAuth();
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -36,6 +37,11 @@ const SignUp = () => {
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({
+    username: '',
+    email: ''
+  });
 
   const startResendTimer = () => {
     setResendTimer(60); // 60 seconds
@@ -50,6 +56,68 @@ const SignUp = () => {
     }, 1000);
   };
 
+  // Validate username availability
+  const validateUsername = async (username: string) => {
+    if (!username || username.trim().length < 3) {
+      setValidationErrors(prev => ({ ...prev, username: '' }));
+      return true;
+    }
+
+    try {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/users/check-username/${encodeURIComponent(username.trim())}`);
+      const data = await response.json();
+      
+      if (response.status === 409) {
+        setValidationErrors(prev => ({ ...prev, username: data.message }));
+        return false;
+      } else if (response.ok) {
+        setValidationErrors(prev => ({ ...prev, username: '' }));
+        return true;
+      }
+      return true;
+    } catch (error) {
+      console.warn('Username validation error:', error);
+      return true; // Allow to proceed if validation fails
+    }
+  };
+
+  // Validate email availability
+  const validateEmail = async (email: string) => {
+    if (!email || !email.includes('@')) {
+      setValidationErrors(prev => ({ ...prev, email: '' }));
+      return true;
+    }
+
+    try {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/users/check-email/${encodeURIComponent(email.trim().toLowerCase())}`);
+      const data = await response.json();
+      
+      if (response.status === 409) {
+        setValidationErrors(prev => ({ ...prev, email: data.message }));
+        return false;
+      } else if (response.ok) {
+        setValidationErrors(prev => ({ ...prev, email: '' }));
+        return true;
+      }
+      return true;
+    } catch (error) {
+      console.warn('Email validation error:', error);
+      return true; // Allow to proceed if validation fails
+    }
+  };
+
+  // Validate both username and email
+  const validateForm = async () => {
+    setIsValidating(true);
+    setValidationErrors({ username: '', email: '' });
+
+    const usernameValid = await validateUsername(form.username);
+    const emailValid = await validateEmail(form.email);
+
+    setIsValidating(false);
+    return usernameValid && emailValid;
+  };
+
   const onSignUpPress = async () => {
     if (!isLoaded) return;
 
@@ -61,6 +129,18 @@ const SignUp = () => {
     if (!acceptedTerms) {
       setShowTermsModal(true);
       return;
+    }
+
+    // Validate username and email availability
+    const isFormValid = await validateForm();
+    if (!isFormValid) {
+      // Show specific error message for username/email conflicts
+      if (validationErrors.username) {
+        Alert.alert("Username Taken", validationErrors.username);
+      } else if (validationErrors.email) {
+        Alert.alert("Email Already Used", validationErrors.email);
+      }
+      return; // Stop the sign-up process
     }
 
     try {
@@ -88,9 +168,23 @@ const SignUp = () => {
       const result = await signUp.attemptEmailAddressVerification({ code: verification.code });
 
       if (result.status === "complete" && result.createdSessionId) {
-        // 4. Send user data to the backend API   
+        // 4. Final validation before creating user in database
         setIsCreatingUser(true);
         try {
+          // Double-check username and email availability before creating user
+          const finalValidation = await validateForm();
+          if (!finalValidation) {
+            // If validation fails at this point, sign out the user and show error
+            await signOut();
+            if (validationErrors.username) {
+              Alert.alert("Username Taken", validationErrors.username);
+            } else if (validationErrors.email) {
+              Alert.alert("Email Already Used", validationErrors.email);
+            }
+            setVerification({ state: "default", error: "", code: "" });
+            return;
+          }
+
           const response = await fetchAPI(`${process.env.EXPO_PUBLIC_API_URL}/api/users`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -103,8 +197,32 @@ const SignUp = () => {
           });
           
           console.log('✅ User created in database:', response);
-        } catch (dbError) {
+        } catch (dbError: any) {
           console.error('❌ Database user creation failed:', dbError);
+          
+          // Check if it's a username/email conflict error
+          if (dbError.message && (
+            dbError.message.includes('Username has been taken') || 
+            dbError.message.includes('Email has been used')
+          )) {
+            // Sign out the user and show specific error
+            await signOut();
+            Alert.alert(
+              "Account Conflict", 
+              dbError.message,
+              [
+                {
+                  text: "OK",
+                  onPress: () => {
+                    setVerification({ state: "default", error: "", code: "" });
+                  }
+                }
+              ]
+            );
+            return;
+          }
+          
+          // For other database errors, show generic message
           Alert.alert(
             "Database Error", 
             "Your account was created but there was an issue saving your profile. Please contact support if you experience any issues.",
@@ -199,24 +317,63 @@ const SignUp = () => {
             Sign Up
           </Text>
 
-          <InputField
-            label="Username"
-            placeholder="Enter your username"
-            icon={icons.person}
-            value={form.username}
-            onChangeText={(v) => setForm({ ...form, username: v })}
-            className="mb-3"
-          />
+          <View className="mb-3">
+            <InputField
+              label="Username"
+              placeholder="Enter your username"
+              icon={icons.person}
+              value={form.username}
+              onChangeText={(v) => {
+                setForm({ ...form, username: v });
+                // Clear validation error when user starts typing
+                if (validationErrors.username) {
+                  setValidationErrors(prev => ({ ...prev, username: '' }));
+                }
+              }}
+              onBlur={() => {
+                // Validate username when user finishes typing
+                if (form.username.trim().length >= 3) {
+                  validateUsername(form.username);
+                }
+              }}
+            />
+            {validationErrors.username ? (
+              <Text className="text-red-500 text-sm mt-1">{validationErrors.username}</Text>
+            ) : null}
+          </View>
           
-          <InputField
-            label="Email"
-            placeholder="you@example.com"
-            icon={icons.email}
-            value={form.email}
-            keyboardType="email-address"
-            onChangeText={(v) => setForm({ ...form, email: v })}
-            className="mb-3"
-          />
+          <View className="mb-3">
+            <InputField
+              label="Email"
+              placeholder="you@example.com"
+              icon={icons.email}
+              value={form.email}
+              keyboardType="email-address"
+              onChangeText={(v) => {
+                setForm({ ...form, email: v });
+                // Clear validation error when user starts typing
+                if (validationErrors.email) {
+                  setValidationErrors(prev => ({ ...prev, email: '' }));
+                }
+              }}
+              onBlur={() => {
+                // Validate email when user finishes typing
+                if (form.email.includes('@')) {
+                  validateEmail(form.email);
+                }
+              }}
+            />
+            {validationErrors.email ? (
+              <View className="mt-1">
+                <Text className="text-red-500 text-sm">{validationErrors.email}</Text>
+                <Link href="/sign-in" className="mt-1">
+                  <Text className="text-primary-500 text-sm font-Jakarta-SemiBold">
+                    Click here to log in instead
+                  </Text>
+                </Link>
+              </View>
+            ) : null}
+          </View>
           
           <View className="my-2 w-full">
             <Text className="text-lg font-JakartaSemiBold mb-3">
@@ -284,10 +441,10 @@ const SignUp = () => {
           </Pressable>
 
           <CustomButton 
-            title="Sign Up" 
+            title={isValidating ? "Validating..." : "Sign Up"} 
             onPress={onSignUpPress} 
             className="h-[50px] rounded-xl"
-            disabled={!acceptedTerms}
+            disabled={!acceptedTerms || isValidating || validationErrors.username !== '' || validationErrors.email !== ''}
           />
 
           <Link href="/sign-in" className="mt-4">

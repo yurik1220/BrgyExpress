@@ -23,7 +23,11 @@
         "NSPhotoLibraryUsageDescription": "We access your photo library to attach images to requests.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
-        }
+        },
+        "LSApplicationQueriesSchemes": [
+          "tel",
+          "telprompt"
+        ]
       }
     },
     "android": {
@@ -56,7 +60,16 @@
           }
         }
       ],
-      "expo-barcode-scanner"
+      "expo-barcode-scanner",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/bx-logo.png",
+          "color": "#ffffff",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

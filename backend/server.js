@@ -158,6 +158,10 @@ async function ensureSchema() {
         // Ensure announcements has deleted_at column for soft deletion
         await pool.query("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ");
 
+        // Ensure incident_reports has category and priority_level columns
+        await pool.query("ALTER TABLE incident_reports ADD COLUMN IF NOT EXISTS category TEXT");
+        await pool.query("ALTER TABLE incident_reports ADD COLUMN IF NOT EXISTS priority_level TEXT DEFAULT 'non-urgent'");
+
         // Ensure users table has required profile/status columns for account maintenance
         try {
             // Ensure both name and username columns exist
@@ -2139,7 +2143,10 @@ app.post('/api/users', async (req, res) => {
             });
         }
 
-        // Check if username is already taken by another user
+        // TEMPORARILY DISABLED: Username/email validation to fix account disabled issue
+        // TODO: Re-enable with proper sign-up only validation
+        /*
+        // Check if username is already taken by another user (only for new users or username changes)
         if (displayName) {
             const existingUsername = await pool.query(
                 'SELECT id, clerk_id FROM users WHERE username = $1 AND clerk_id != $2',
@@ -2155,7 +2162,7 @@ app.post('/api/users', async (req, res) => {
             }
         }
 
-        // Check if email is already used by another user
+        // Check if email is already used by another user (only for new users or email changes)
         if (email) {
             const existingEmail = await pool.query(
                 'SELECT id, clerk_id FROM users WHERE email = $1 AND clerk_id != $2',
@@ -2170,6 +2177,7 @@ app.post('/api/users', async (req, res) => {
                 });
             }
         }
+        */
         // Upsert by clerk_id, prefer provided phone/email if present
         // Store username in username column, leave name column blank (will be filled when ID is approved)
         const result = await pool.query(
@@ -2484,11 +2492,10 @@ app.get("/api/users/me", async (req, res) => {
         );
 
         if (userQuery.rows.length === 0) {
-            // For disabled accounts, we should return 403 instead of 404
-            // This helps distinguish between "user doesn't exist" vs "user is disabled"
-            return res.status(403).json({ 
-                error: "Account Disabled", 
-                message: "Account Disabled. Please contact Barangay" 
+            // User not found in database - return 404, not 403
+            return res.status(404).json({ 
+                error: "User not found", 
+                message: "User not found" 
             });
         }
 
@@ -2516,11 +2523,10 @@ app.get("/api/users/:clerkID", async (req, res) => {
         );
 
         if (userQuery.rows.length === 0) {
-            // For disabled accounts, we should return 403 instead of 404
-            // This helps distinguish between "user doesn't exist" vs "user is disabled"
-            return res.status(403).json({ 
-                error: "Account Disabled", 
-                message: "Account Disabled. Please contact Barangay" 
+            // User not found in database - return 404, not 403
+            return res.status(404).json({ 
+                error: "User not found", 
+                message: "User not found" 
             });
         }
 
@@ -2622,7 +2628,7 @@ app.post("/api/requests", upload.fields([
     { name: 'selfie_image', maxCount: 1 },
     { name: 'bill_image', maxCount: 1 }, // Meralco bill
 ]), async (req, res) => {
-    const { type, document_type, reason, remarks, clerk_id, full_name, birth_date, address, contact, description, title, location, sex, civil_status } = req.body;
+    const { type, document_type, reason, remarks, clerk_id, full_name, birth_date, address, contact, description, title, location, sex, civil_status, category, priority_level } = req.body;
     const files = req.files || {};
     const mediaFile = files.media && files.media[0] ? files.media[0] : (files.image && files.image[0] ? files.image[0] : null);
     const idImageFile = files.id_image && files.id_image[0] ? files.id_image[0] : null;
@@ -2743,12 +2749,20 @@ app.post("/api/requests", upload.fields([
                         console.warn('Cloudinary upload failed for incident media:', e?.message || e);
                     }
                 }
+                
+                // Use category and priority_level if provided, otherwise try to determine from category
+                let finalPriority = priority_level;
+                if (!finalPriority && category) {
+                    const urgentCategories = ["Assault", "Fire", "Medical Emergency"];
+                    finalPriority = urgentCategories.includes(category) ? 'urgent' : 'non-urgent';
+                }
+                
                 const incidentResult = await pool.query(
                     `INSERT INTO incident_reports
-                     (title, description, media_url, location, clerk_id, status, created_at)
-                     VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+                     (title, description, media_url, location, clerk_id, status, category, priority_level, created_at)
+                     VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8)
                      RETURNING *`,
-                    [title, description, mediaUrl, location, clerk_id, timestamp]
+                    [title, description, mediaUrl, location, clerk_id, category || null, finalPriority || 'non-urgent', timestamp]
                 );
                 return res.status(200).json(incidentResult.rows[0]);
 

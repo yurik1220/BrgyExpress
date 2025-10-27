@@ -106,6 +106,8 @@ class SessionManager {
         // Clear localStorage
         localStorage.removeItem('adminData');
         localStorage.removeItem('adminToken');
+        localStorage.removeItem('admin_username');
+        localStorage.removeItem('admin_login_time');
 
         // Show notification for interactive contexts, or when forced by user
         if (force || !document.hidden) {

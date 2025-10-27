@@ -195,3 +195,5 @@ For issues with offline functionality:
 2. Verify service worker registration in DevTools
 3. Test with different network conditions
 4. Check cache status in DevTools > Application > Storage
+
+

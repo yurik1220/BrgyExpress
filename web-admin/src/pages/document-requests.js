@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import api from "../lib/fetch";
+import Watermark from "../components/Watermark";
+import ProtectedUploadImage from "../components/ProtectedUploadImage";
 import "../styles/DocumentRequests.css";
 
 const DocumentRequests = () => {
@@ -17,6 +19,7 @@ const DocumentRequests = () => {
     const [appointmentDate, setAppointmentDate] = useState("");
     const [appointmentTime, setAppointmentTime] = useState("");
     const [searchRef, setSearchRef] = useState("");
+    const [isBlurred, setIsBlurred] = useState({ requester: true });
 
     useEffect(() => {
         const fetchDocumentRequests = async () => {
@@ -139,6 +142,8 @@ const DocumentRequests = () => {
 
     return (
         <div className="document-requests-container">
+            <Watermark />
+            
             {/* Enhanced Header */}
             <div className="content-header">
                 <div className="header-content">
@@ -431,7 +436,69 @@ const DocumentRequests = () => {
                                     };
                                     const src = toAbsoluteUrl(selectedRequest.requester_selfie || selectedRequest.selfie_image_url);
                                     return src ? (
-                                      <img src={src} alt="Requester Selfie" style={{ width: '100%', maxHeight: 140, objectFit: 'contain', borderRadius: 8, background: '#f8fafc', cursor: 'pointer' }} onClick={() => setImagePreview(src)} />
+                                      <div style={{ position: 'relative' }}>
+                                        <ProtectedUploadImage 
+                                            src={src} 
+                                            alt="Requester Selfie" 
+                                            style={{ 
+                                                width: '100%', 
+                                                maxHeight: 140, 
+                                                objectFit: 'contain', 
+                                                borderRadius: 8, 
+                                                background: '#f8fafc',
+                                                filter: isBlurred.requester ? 'blur(10px)' : 'none',
+                                                transition: 'filter 0.3s ease'
+                                            }} 
+                                        />
+                                        {isBlurred.requester && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setIsBlurred({ requester: false }); }}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: '50%',
+                                                    left: '50%',
+                                                    transform: 'translate(-50%, -50%)',
+                                                    background: 'rgba(0, 0, 0, 0.8)',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    padding: '10px 20px',
+                                                    borderRadius: 8,
+                                                    cursor: 'pointer',
+                                                    fontSize: 13,
+                                                    fontWeight: 600,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 6,
+                                                    zIndex: 10
+                                                }}
+                                            >
+                                                <i className="fas fa-eye"></i> View
+                                            </button>
+                                        )}
+                                        {!isBlurred.requester && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setImagePreview(src); }}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: 8,
+                                                    right: 8,
+                                                    background: 'rgba(0, 0, 0, 0.7)',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    padding: '6px 12px',
+                                                    borderRadius: 6,
+                                                    cursor: 'pointer',
+                                                    fontSize: 12,
+                                                    fontWeight: 600,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 4
+                                                }}
+                                            >
+                                                <i className="fas fa-expand"></i> View Full
+                                            </button>
+                                        )}
+                                      </div>
                                     ) : (
                                       <div style={{ fontSize: 13, color: '#6b7280' }}>No selfie image available</div>
                                     );
@@ -545,7 +612,7 @@ const DocumentRequests = () => {
                             </button>
                         </div>
                         <div className="modal-body">
-                            <img src={imagePreview} alt="Preview" style={{ width: '100%', maxHeight: 600, objectFit: 'contain', borderRadius: 8 }} />
+                            <ProtectedUploadImage src={imagePreview} alt="Preview" style={{ width: '100%', maxHeight: 600, objectFit: 'contain', borderRadius: 8 }} />
                         </div>
                     </div>
                 </div>

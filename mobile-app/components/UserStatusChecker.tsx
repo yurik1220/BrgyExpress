@@ -49,7 +49,19 @@ const UserStatusChecker: React.FC<UserStatusCheckerProps> = ({ children }) => {
           }
         }
       } catch (error) {
-        console.log('User status check failed:', error);
+        // Don't log user-facing errors that are handled in UI
+        const errorMessage = error?.message || error?.toString() || '';
+        const shouldSuppressLog = (
+          errorMessage.includes('404') ||
+          errorMessage.includes('User not found') ||
+          errorMessage.includes('Account Disabled') ||
+          errorMessage.includes('403') ||
+          errorMessage.includes('User not authenticated')
+        );
+        
+        if (!shouldSuppressLog) {
+          console.log('User status check failed:', error);
+        }
         // If status check fails, continue normally
       } finally {
         setIsChecking(false);

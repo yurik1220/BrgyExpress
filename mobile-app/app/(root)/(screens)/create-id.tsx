@@ -591,14 +591,14 @@ const CreateIDScreen = () => {
       const live = await luxandLiveness(selfieImage);
       console.log('Liveness result:', live);
       if (!live.passed) {
-        setFaceVerificationResult({ isMatch: false, confidence: 0, faceDetected: false, livenessPassed: false, error: 'Liveness failed. Please retake under better lighting.' });
-        setNoticeTitle('Liveness Failed');
-        setNoticeMessage('Please retake your selfie under better lighting and try again.');
+        setFaceVerificationResult({ isMatch: false, confidence: 0, faceDetected: false, livenessPassed: false, error: 'Liveness check failed. Please ensure you are taking a live selfie, not using a photo or video.' });
+        setNoticeTitle('Liveness Check Failed');
+        setNoticeMessage('Please take a live selfie. Do not use photos, videos, or screens. Ensure good lighting and look directly at the camera.');
         setNoticeVisible(true);
         return false;
       }
       console.log('Running face matching...');
-      const match = await luxandVerify(idImage, selfieImage, { minConfidence: 60 } as any);
+      const match = await luxandVerify(idImage, selfieImage, { minConfidence: 90 } as any);
       console.log('Face match result:', match);
       const combined: FaceVerificationResult = { ...match, livenessPassed: true } as any;
       setFaceVerificationResult(combined);

@@ -44,15 +44,39 @@ export const googleOAuth = async (startOAuthFlow: any) => {
         await setActive({ session: createdSessionId });
 
         if (signUp.createdUserId) {
-          await fetchAPI(`${process.env.EXPO_PUBLIC_API_URL}/api/users`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: `${signUp.firstName} ${signUp.lastName}`,
-              email: signUp.emailAddress,
-              clerkId: signUp.createdUserId,
-            }),
-          });
+          try {
+            const response = await fetchAPI(`${process.env.EXPO_PUBLIC_API_URL}/api/users`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: `${signUp.firstName} ${signUp.lastName}`,
+                email: signUp.emailAddress,
+                clerkId: signUp.createdUserId,
+              }),
+            });
+            
+            // Check if the response indicates account is disabled
+            if (response.error === "Account Disabled") {
+              return {
+                success: false,
+                code: "account_disabled",
+                message: "Account Disabled. Please contact Barangay",
+              };
+            }
+          } catch (error: any) {
+            // Check if the error is due to account being disabled
+            if (error.message.includes('403') || error.message.includes('Account Disabled')) {
+              // Don't log this error as it's handled in UI
+              return {
+                success: false,
+                code: "account_disabled",
+                message: "Account Disabled. Please contact Barangay",
+              };
+            }
+            // Only log unexpected errors
+            console.error("Unexpected error during user creation:", error);
+            throw error;
+          }
         }
 
         return {

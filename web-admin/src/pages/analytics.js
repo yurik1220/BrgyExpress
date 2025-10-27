@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import api from "../lib/fetch";
+import Watermark from "../components/Watermark";
 import '../styles/Analytics.css';
 // Map dependencies (install if not yet installed):
 // npm install react-leaflet leaflet
@@ -1405,6 +1406,8 @@ const Analytics = () => {
 
     return (
         <div className="analytics-container">
+            <Watermark />
+            
             {/* Header Section */}
             <div className="analytics-header">
                 <div className="header-content">

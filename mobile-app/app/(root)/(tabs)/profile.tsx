@@ -59,7 +59,13 @@ const Profile = () => {
                 setUser(response.data);
                 setTempUsername(response.data.username || 'User');
             } catch (err) {
-                console.error('Failed to fetch user data:', err);
+                // Don't log console errors for user authentication issues that are handled in UI
+                const errorMessage = (err as Error).message;
+                if (!errorMessage.includes('User not authenticated') && 
+                    !errorMessage.includes('403') && 
+                    !errorMessage.includes('404')) {
+                    console.error('Failed to fetch user data:', err);
+                }
                 setError('Failed to load profile data');
             } finally {
                 setLoading(false);

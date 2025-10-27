@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../lib/fetch';
+import Watermark from '../components/Watermark';
 import '../styles/AdminManagement.css';
 
 const AdminManagement = () => {
@@ -150,6 +151,8 @@ const AdminManagement = () => {
 
     return (
         <div className="admin-management-container">
+            <Watermark />
+            
             <div className="page-header">
                 <div className="header-content">
                     <h1>Manage Admin Accounts</h1>

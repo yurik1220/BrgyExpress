@@ -1,9 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
 
+/* ===== WATERMARK STYLES ===== */
+.dashboard-watermark {
+    /* Styles are applied inline in Watermark component */
+}
+
 /* ===== ID REQUESTS STYLES ===== */
 
 .id-requests-container {
+    position: relative;
+    overflow: hidden;
     padding: 24px;
     background: #f8fafc;
     min-height: 100vh;
@@ -723,40 +730,6 @@
     background: #94a3b8;
     cursor: not-allowed;
     transform: none;
-}
-
-/* ===== FORM STYLES ===== */
-.form-group {
-    margin-bottom: 20px;
-}
-
-.form-group label {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: 600;
-    color: #374151;
-    font-size: 14px;
-}
-
-.form-input {
-    width: 100%;
-    padding: 12px 16px;
-    border: 2px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 14px;
-    transition: all 0.2s ease;
-    background: #ffffff;
-    box-sizing: border-box;
-}
-
-.form-input:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.form-input:hover {
-    border-color: #d1d5db;
 }
 
 /* ===== RESPONSIVE DESIGN ===== */

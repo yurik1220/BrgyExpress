@@ -202,7 +202,7 @@ class FaceppService {
     } = {}
   ): Promise<FaceVerificationResult> {
     const {
-      minConfidence = 60  // Lowered from 80% to 60% for better real-world usability
+      minConfidence = 90  // Increased to 90% for stricter face verification
     } = options;
 
     try {

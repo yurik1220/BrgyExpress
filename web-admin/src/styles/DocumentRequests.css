@@ -1,6 +1,12 @@
 /* ===== DOCUMENT REQUESTS STYLES ===== */
+/* ===== WATERMARK STYLES ===== */
+.dashboard-watermark {
+    /* Styles are applied inline in Watermark component */
+}
 
 .document-requests-container {
+    position: relative;
+    overflow: hidden;
     padding: 24px;
     background: #f8fafc;
     min-height: 100vh;
@@ -741,31 +747,4 @@
     .modal-actions {
         flex-direction: column;
     }
-}
-
-/* Detail item styles for modal */
-.detail-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 12px;
-    font-size: 14px;
-}
-
-.detail-item:last-child {
-    margin-bottom: 0;
-}
-
-.detail-item .label {
-    font-weight: 600;
-    color: #64748b;
-    min-width: 100px;
-}
-
-.detail-item .value {
-    color: #1e293b;
-    font-weight: 500;
-    text-align: right;
-    flex: 1;
-    margin-left: 16px;
 }

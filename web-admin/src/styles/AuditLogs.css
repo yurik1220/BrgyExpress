@@ -1,4 +1,9 @@
+/* ===== WATERMARK STYLES ===== */
+/* .dashboard-watermark { Styles are applied inline in Watermark component } */
+
 .audit-logs-container {
+    position: relative;
+    overflow: hidden;
     padding: 20px;
     max-width: 1400px;
     margin: 0 auto;
@@ -37,6 +42,43 @@
     color: #64748b;
     margin: 0;
     font-weight: 500;
+}
+
+/* Export Button */
+.export-btn {
+    background: #e9ecef;
+    color: #6c757d;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.export-btn.active {
+    background: #007bff;
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+}
+
+.export-btn.active:hover {
+    background: #0056b3;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
+}
+
+.export-btn.disabled {
+    background: #f8f9fa;
+    color: #adb5bd;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.export-btn.disabled:hover {
+    transform: none;
+    box-shadow: none;
 }
 
 .audit-instructions {
@@ -113,15 +155,8 @@
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
-.filters-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-}
-
 .quick-filters h3 {
-    margin: 0;
+    margin: 0 0 15px 0;
     color: #333;
     font-size: 1.2rem;
 }
@@ -529,171 +564,6 @@
     .pagination {
         flex-direction: column;
         gap: 10px;
-    }
-}
-
-/* Export Button Styles - Scoped to Audit Logs */
-.audit-logs-container .export-btn {
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.audit-logs-container .export-btn:hover {
-    background: linear-gradient(135deg, #1d4ed8, #1e40af);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
-}
-
-.audit-logs-container .export-btn.disabled {
-    background: linear-gradient(135deg, #d1d5db, #9ca3af);
-    color: #6b7280;
-    cursor: not-allowed;
-    box-shadow: none;
-    opacity: 0.6;
-}
-
-.audit-logs-container .export-btn.disabled:hover {
-    background: linear-gradient(135deg, #d1d5db, #9ca3af);
-    transform: none;
-    box-shadow: none;
-}
-
-/* Audit Logs Specific Modal Styles */
-.audit-logs-container .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    backdrop-filter: blur(4px);
-}
-
-.audit-logs-container .modal {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    max-width: 600px;
-    width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
-    animation: auditModalSlideIn 0.3s ease-out;
-}
-
-.audit-logs-container .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px 24px;
-    border-bottom: 1px solid #e5e7eb;
-    background: #f8fafc;
-    border-radius: 12px 12px 0 0;
-}
-
-.audit-logs-container .modal-header h3 {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #1f2937;
-}
-
-.audit-logs-container .close-btn {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    color: #6b7280;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-}
-
-.audit-logs-container .close-btn:hover {
-    background: #f3f4f6;
-    color: #374151;
-}
-
-.audit-logs-container .modal-body {
-    padding: 24px;
-}
-
-.audit-logs-container .detail-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #f1f5f9;
-}
-
-.audit-logs-container .detail-item:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-}
-
-.audit-logs-container .detail-item .label {
-    font-weight: 600;
-    color: #64748b;
-    min-width: 120px;
-    margin-right: 16px;
-}
-
-.audit-logs-container .detail-item .value {
-    color: #1e293b;
-    font-weight: 500;
-    text-align: right;
-    flex: 1;
-    word-break: break-word;
-}
-
-.audit-logs-container .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 20px 24px;
-    border-top: 1px solid #e5e7eb;
-    background: #f8fafc;
-    border-radius: 0 0 12px 12px;
-}
-
-.audit-logs-container .btn-secondary {
-    background: #6b7280;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.audit-logs-container .btn-secondary:hover {
-    background: #4b5563;
-    transform: translateY(-1px);
-}
-
-@keyframes auditModalSlideIn {
-    from {
-        opacity: 0;
-        transform: scale(0.95) translateY(-20px);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
     }
 }
 

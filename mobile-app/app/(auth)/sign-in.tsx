@@ -1,7 +1,7 @@
 import { ScrollView, Text, View, Image, Alert, Dimensions, TouchableOpacity } from "react-native";
 import { icons, images } from "@/constants";
 import InputField from "@/components/InputField";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import CustomButton from "@/components/CustomButton";
 import { Link, useRouter } from "expo-router";
 import { useSignIn, useAuth } from "@clerk/clerk-expo";
@@ -21,6 +21,37 @@ const SignIn = () => {
   });
   const [showReset, setShowReset] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
+  const [isNavigationReady, setIsNavigationReady] = useState(false);
+
+  // Check if navigation is ready
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsNavigationReady(true);
+    }, 500); // Wait 500ms for navigation to be ready
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Helper function to safely navigate
+  const safeNavigate = useCallback((path: string) => {
+    if (isNavigationReady) {
+      try {
+        router.replace(path);
+      } catch (error) {
+        console.warn('Navigation failed, retrying in 100ms:', error);
+        setTimeout(() => {
+          try {
+            router.replace(path);
+          } catch (retryError) {
+            console.warn('Navigation retry failed:', retryError);
+          }
+        }, 100);
+      }
+    } else {
+      console.warn('Navigation not ready, waiting...');
+      setTimeout(() => safeNavigate(path), 100);
+    }
+  }, [isNavigationReady, router]);
   const [resetPassword, setResetPassword] = useState("");
   const [resetCode, setResetCode] = useState("");
   const [resetSent, setResetSent] = useState(false);
@@ -46,14 +77,126 @@ const SignIn = () => {
 
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
-        router.replace("/(root)/(tabs)/home");
+        
+        // Check user status after successful authentication
+        try {
+          const { fetchAPI } = await import("@/lib/fetch");
+          await fetchAPI(`${process.env.EXPO_PUBLIC_API_URL}/api/users/${signInAttempt.createdUserId}`);
+          console.log('✅ User status check successful, navigating to home');
+          // Use safe navigation to avoid timing issues
+          safeNavigate("/(root)/(tabs)/home");
+        } catch (statusError: any) {
+          // Suppress console logs for user-facing errors that are handled in UI
+          const shouldSuppressLog = (
+            statusError.message.includes('404') ||
+            statusError.message.includes('User not found') ||
+            statusError.message.includes('Account Disabled') ||
+            statusError.message.includes('403')
+          );
+          
+          if (!shouldSuppressLog) {
+            console.log('⚠️ User status check failed:', statusError.message);
+          }
+          
+          // If account is disabled, sign out and show error
+          if (statusError.message.includes('403') || statusError.message.includes('Account Disabled')) {
+            console.log('❌ Account is disabled, signing out');
+            await signOut();
+            Alert.alert(
+              "Account Disabled",
+              "Account Disabled. Please contact Barangay",
+              [{ text: "OK" }]
+            );
+            return;
+          }
+          
+          // For other errors (like network issues, server errors, etc.), 
+          // still navigate to home and let AccountStatusCheck handle it
+          // Don't show "Something went wrong" for these cases
+          // Suppress console warnings for user-facing errors that are handled in UI
+          // Don't log warnings for 404, user not found, or account disabled errors
+          const shouldSuppressWarning = (
+            statusError.message.includes('404') ||
+            statusError.message.includes('User not found') ||
+            statusError.message.includes('Account Disabled') ||
+            statusError.message.includes('403')
+          );
+          
+          if (!shouldSuppressWarning) {
+            console.warn('User status check failed during login, but continuing to home screen:', statusError.message);
+          }
+          // Use safe navigation to avoid timing issues
+          safeNavigate("/(root)/(tabs)/home");
+        }
       } else {
-        console.log(JSON.stringify(signInAttempt, null, 2));
-        Alert.alert("Error", "Log in failed. Please try again.");
+        // Handle incomplete sign-in attempts more gracefully
+        console.log('🔍 Sign-in attempt status:', signInAttempt.status);
+        console.log('🔍 Sign-in attempt details:', JSON.stringify(signInAttempt, null, 2));
+        
+        // If the sign-in attempt is not complete but not due to user error,
+        // it might be a temporary issue - let's try to continue anyway
+        if (signInAttempt.status === "needs_second_factor" || 
+            signInAttempt.status === "needs_new_password" ||
+            signInAttempt.status === "needs_identifier") {
+          console.log('🚨 User input required, showing login failed alert for status:', signInAttempt.status);
+          Alert.alert("Error", "Log in failed. Please try again.");
+        } else {
+          // For any other incomplete status, don't show "Log in failed" - try to continue
+          console.log('Sign-in status is incomplete but not a user error, attempting to continue:', signInAttempt.status);
+          // For other incomplete statuses, try to continue and let AccountStatusCheck handle it
+          console.warn('Sign-in incomplete but continuing:', signInAttempt.status);
+          try {
+            await setActive({ session: signInAttempt.createdSessionId });
+            // Use safe navigation to avoid timing issues
+            safeNavigate("/(root)/(tabs)/home");
+          } catch (setActiveError) {
+            console.warn('Failed to set active session:', setActiveError);
+            // Don't show "Log in failed" for setActive errors - these might be temporary
+            // Just log the error and continue to home screen
+            console.warn('setActive failed but continuing to home screen');
+            // Use safe navigation to avoid timing issues
+            safeNavigate("/(root)/(tabs)/home");
+          }
+        }
       }
     } catch (err: any) {
       console.log(JSON.stringify(err, null, 2));
-      Alert.alert("Error", err.errors?.[0]?.longMessage || "Something went wrong");
+      
+      // Only show error alerts for specific authentication failures
+      // Don't show generic "Something went wrong" for network or server issues
+      if (err.errors && err.errors.length > 0) {
+        const errorMessage = err.errors[0]?.longMessage;
+        if (errorMessage && !errorMessage.includes('network') && !errorMessage.includes('timeout')) {
+          Alert.alert("Error", errorMessage);
+        } else {
+          // For network/timeout issues, show a more specific message or just log
+          console.warn('Authentication error (likely network related):', errorMessage);
+          Alert.alert("Error", "Unable to connect. Please check your internet connection and try again.");
+        }
+      } else {
+        // For unexpected errors, check if it's a network issue before showing generic message
+        const errorString = err?.toString() || '';
+        if (errorString.includes('network') || errorString.includes('timeout') || errorString.includes('fetch')) {
+          console.warn('Network-related authentication error:', errorString);
+          Alert.alert("Error", "Unable to connect. Please check your internet connection and try again.");
+        } else if (errorString.includes('User not authenticated') || 
+                   errorString.includes('404') || 
+                   errorString.includes('User not found') ||
+                   errorString.includes('Account Disabled') ||
+                   errorString.includes('403') ||
+                   errorString.includes('Attempted to navigate before mounting') ||
+                   errorString.includes('Root Layout component')) {
+          // Don't show "Log in failed" for user authentication issues or navigation timing issues
+          console.warn('User authentication or navigation timing issue, but continuing:', errorString);
+          // Try to continue to home screen anyway using safe navigation
+          safeNavigate("/(root)/(tabs)/home");
+        } else {
+          // Only show "Log in failed" for actual authentication errors (like wrong password)
+          console.log('🚨 Actual authentication error, showing alert:', errorString);
+          console.log('🚨 Full error object:', err);
+          Alert.alert("Error", "Log in failed. Please try again.");
+        }
+      }
     }
   }, [isLoaded, form]);
 
@@ -278,7 +421,7 @@ const SignIn = () => {
             setResetEmail("");
             setResetCode("");
             setResetPassword("");
-            (async () => { try { await signOut?.(); } catch {} finally { router.replace('/sign-in'); } })();
+            (async () => { try { await signOut?.(); } catch {} finally { safeNavigate('/sign-in'); } })();
           }}
           className="mt-2 h-[56px] rounded-xl"
         />

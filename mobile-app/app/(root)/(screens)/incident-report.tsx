@@ -7,6 +7,7 @@ import {
     KeyboardAvoidingView, Platform, SafeAreaView,
     ScrollView,
     Modal,
+    Linking,
 } from "react-native";
 // Import camera, location, biometric auth, and routing utilities
 import { CameraView, useCameraPermissions, CameraType } from "expo-camera";
@@ -32,16 +33,12 @@ type Media = {
 
 //  Coordinates defining the allowed geofence area for submissions
 const polygonCoordinates: [number, number][] = [
-    [120.9739823,14.6574957],
-    [120.9749372,14.653214],
-    [120.9770132,14.6536033],
-    [120.9767041,14.6551881],
-    [120.9774565,14.655831],
-    [120.9772401,14.6564566],
-    [120.9773045,14.6574973],
-    [120.9762415,14.6577049],
-    [120.9752142,14.6575429],
-    [120.9739823,14.6574957],
+    [120.9740121,14.6575099],
+    [120.9749562,14.6531815],
+    [120.9770162,14.6535448],
+    [120.9780998,14.6589319],
+    [120.9748597,14.6584233],
+    [120.9740121,14.6575099],
 ];
 
 //  Function to check if user's location is inside the polygon (geofencing)
@@ -77,24 +74,26 @@ const IncidentReportScreen = () => {
 
     //  Additional UI state
     const categories = [
-        "Theft",
         "Assault",
         "Fire",
-        "Accident",
+        "Medical Emergency",
         "Disturbance",
-        "Others",
+        "Theft",
     ];
-    const urgencies = ["Low", "Medium", "High"] as const;
+    
+    // Define urgent and non-urgent categories
+    const urgentCategories = ["Assault", "Fire", "Medical Emergency"];
+    const nonUrgentCategories = ["Disturbance", "Theft"];
+    
     const [selectedCategory, setSelectedCategory] = useState<string>("");
-    const [selectedUrgency, setSelectedUrgency] = useState<string>("");
     const [addressText, setAddressText] = useState<string>("");
     const [reportedAt, setReportedAt] = useState<string>("");
     const [isCategoryOpen, setIsCategoryOpen] = useState<boolean>(false);
-    const [isUrgencyOpen, setIsUrgencyOpen] = useState<boolean>(false);
     const [isVerified, setIsVerified] = useState<boolean>(false);
     const [eligibilityModalVisible, setEligibilityModalVisible] = useState<boolean>(false);
     const [devBypassEnabled, setDevBypassEnabled] = useState<boolean>(false);
     const [cooldownMessage, setCooldownMessage] = useState<string>("");
+    const [emergencyAlertVisible, setEmergencyAlertVisible] = useState<boolean>(false);
 
     //  useEffect runs on component mount
     useEffect(() => {
@@ -217,12 +216,31 @@ const IncidentReportScreen = () => {
         return '';
     };
 
+    // Determine if category is urgent
+    const isUrgentCategory = (category: string): boolean => {
+        return urgentCategories.includes(category);
+    };
+    
     //  Handle initial form validation before submission
     const handleSubmit = async () => {
-        if (!title || !description || !media || !selectedCategory || !selectedUrgency) {
-            Alert.alert("Missing Fields", "Please complete all fields, choose a category and urgency, and take a photo.");
+        if (!title || !description || !media || !selectedCategory) {
+            Alert.alert("Missing Fields", "Please complete all fields, choose a category, and take a photo.");
             return;
         }
+        
+        // Check if the selected category is urgent
+        if (isUrgentCategory(selectedCategory)) {
+            // Show emergency alert modal
+            setEmergencyAlertVisible(true);
+            return;
+        }
+        
+        // For non-urgent categories, proceed directly
+        proceedWithSubmission();
+    };
+    
+    // Proceed with incident submission
+    const proceedWithSubmission = async () => {
 
         if (!userId) {
             Alert.alert("Authentication Error", "You must be logged in to submit a report.");
@@ -280,6 +298,41 @@ const IncidentReportScreen = () => {
         setIsModalVisible(true); // Show warning modal
     };
 
+
+    // Emergency Alert: Call 911 and proceed
+    const handleEmergencyCall = async () => {
+        setEmergencyAlertVisible(false);
+        
+        try {
+            // Try to open phone dialer with 911
+            const url = 'tel:911';
+            
+            // Open the URL directly - don't check canOpenURL first
+            // as it can fail even when openURL works
+            await Linking.openURL(url);
+            
+            // Proceed with submission after opening dialer
+            setTimeout(() => {
+                proceedWithSubmission();
+            }, 1000);
+        } catch (error) {
+            console.error("Error opening phone dialer:", error);
+            // Still proceed with submission even if dialer fails
+            Alert.alert(
+                "Emergency Notice", 
+                "Please dial 911 manually now for immediate assistance. Your report will still be submitted."
+            );
+            setTimeout(() => {
+                proceedWithSubmission();
+            }, 1000);
+        }
+    };
+
+    // Emergency Alert: Cancel handler
+    const handleEmergencyCancel = () => {
+        setEmergencyAlertVisible(false);
+    };
+
     //  Modal: Confirm submission and trigger biometric auth
     const handleModalConfirm = async () => {
         setIsModalVisible(false);
@@ -328,6 +381,9 @@ const IncidentReportScreen = () => {
                 hostedUrl = await uploadIncidentImage(media.uri);
             }
 
+            // Determine priority level based on category
+            const priorityLevel = urgentCategories.includes(selectedCategory) ? 'urgent' : 'non-urgent';
+            
             // Build multipart payload; prefer passing media_url when available
             const formData = new FormData();
             formData.append('type', 'Incident Report');
@@ -336,7 +392,7 @@ const IncidentReportScreen = () => {
             formData.append('location', userLocation?.join(',') || '');
             formData.append('clerk_id', userId);
             formData.append('category', selectedCategory);
-            formData.append('urgency', selectedUrgency);
+            formData.append('priority_level', priorityLevel);
             if (addressText) formData.append('address', addressText);
             if (reportedAt) formData.append('reported_at', reportedAt);
 
@@ -527,7 +583,6 @@ const IncidentReportScreen = () => {
                                         style={styles.dropdownField}
                                         onPress={() => {
                                             setIsCategoryOpen((v) => !v);
-                                            setIsUrgencyOpen(false);
                                         }}
                                         activeOpacity={0.8}
                                     >
@@ -547,43 +602,14 @@ const IncidentReportScreen = () => {
                                                         setIsCategoryOpen(false);
                                                     }}
                                                 >
-                                                    <Text style={[styles.dropdownOptionText, selectedCategory === cat && styles.dropdownOptionTextSelected]}>{cat}</Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </View>
-                                    )}
-                                </View>
-                            </View>
-
-                            {/* Urgency Dropdown */}
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Urgency *</Text>
-                                <View style={styles.dropdownContainer}>
-                                    <TouchableOpacity
-                                        style={styles.dropdownField}
-                                        onPress={() => {
-                                            setIsUrgencyOpen((v) => !v);
-                                            setIsCategoryOpen(false);
-                                        }}
-                                        activeOpacity={0.8}
-                                    >
-                                        <Text style={selectedUrgency ? styles.dropdownValue : styles.dropdownPlaceholder} numberOfLines={1}>
-                                            {selectedUrgency || 'Select urgency'}
-                                        </Text>
-                                        <Ionicons name={isUrgencyOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#64748b" style={styles.dropdownChevron} />
-                                    </TouchableOpacity>
-                                    {isUrgencyOpen && (
-                                        <View style={styles.dropdownOptions}>
-                                            {urgencies.map((lvl) => (
-                                                <TouchableOpacity
-                                                    key={lvl}
-                                                    style={styles.dropdownOption}
-                                                    onPress={() => {
-                                                        setSelectedUrgency(lvl);
-                                                        setIsUrgencyOpen(false);
-                                                    }}
-                                                >
-                                                    <Text style={[styles.dropdownOptionText, selectedUrgency === lvl && styles.dropdownOptionTextSelected]}>{lvl}</Text>
+                                                    <Text style={[styles.dropdownOptionText, selectedCategory === cat && styles.dropdownOptionTextSelected]}>
+                                                        {cat}
+                                                    </Text>
+                                                    {urgentCategories.includes(cat) && (
+                                                        <Text style={{ marginLeft: 8, fontSize: 11, color: '#ef4444', fontWeight: '600' }}>
+                                                            URGENT
+                                                        </Text>
+                                                    )}
                                                 </TouchableOpacity>
                                             ))}
                                         </View>
@@ -671,6 +697,46 @@ const IncidentReportScreen = () => {
                             </TouchableOpacity>
                             </ScrollView>
                         </Animated.View>
+
+                        {/* Emergency Alert Modal */}
+                        {emergencyAlertVisible && (
+                            <Animated.View 
+                                entering={FadeIn.duration(300)}
+                                style={styles.modalOverlay}
+                            >
+                                <View style={styles.modalContainer}>
+                                    <View style={[styles.modalIconContainer, { backgroundColor: '#ef4444' }]}>
+                                        <Ionicons name="call" size={32} color="white" />
+                                    </View>
+                                    <Text style={styles.modalTitle}>Emergency Alert</Text>
+                                    <Text style={styles.modalText}>
+                                        This incident requires immediate attention. Please call 911 now for emergency services.
+                                    </Text>
+                                    <Text style={[styles.modalText, { marginTop: 12, fontSize: 14, color: '#ef4444', fontWeight: '600' }]}>
+                                        Your report will be submitted to the barangay after you call.
+                                    </Text>
+
+                                    <View style={styles.modalButtons}>
+                                        <TouchableOpacity
+                                            style={[styles.modalConfirmButton, { backgroundColor: '#ef4444' }]}
+                                            onPress={handleEmergencyCall}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons name="call" size={18} color="white" style={{ marginRight: 8 }} />
+                                            <Text style={styles.modalConfirmText}>Call 911</Text>
+                                        </TouchableOpacity>
+                                        
+                                        <TouchableOpacity
+                                            style={styles.modalCancelButton}
+                                            onPress={handleEmergencyCancel}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Text style={styles.modalCancelText}>Cancel</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            </Animated.View>
+                        )}
 
                         {/* Warning Modal */}
                         {isModalVisible && (

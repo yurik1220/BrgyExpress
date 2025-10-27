@@ -33,9 +33,39 @@ export async function liveness(imageUri: string): Promise<{ passed: boolean; sco
     });
     const json: any = await res.json();
     console.log('[Luxand] liveness raw response:', JSON.stringify(json));
-    const passed = !!(json && (json.status === 'success' || json.liveness === 'real' || json.result === 'pass'));
+    
+    // Explicitly check for fake/spoof results - these should NOT pass
+    const isFake = json && (
+      json.liveness === 'fake' || 
+      json.liveness === 'spoof' || 
+      json.result === 'fake' || 
+      json.result === 'fail' ||
+      json.status === 'fake' ||
+      (typeof json.liveness === 'string' && json.liveness.toLowerCase().includes('fake')) ||
+      (typeof json.result === 'string' && json.result.toLowerCase().includes('fake'))
+    );
+    
+    // Only pass if explicitly real/live and not fake
+    const isReal = json && (
+      json.liveness === 'real' || 
+      json.liveness === 'live' ||
+      json.result === 'pass' || 
+      json.result === 'real' ||
+      json.status === 'success'
+    );
+    
+    const passed = !isFake && isReal;
     const score = json?.score ?? json?.confidence ?? undefined;
-    console.log('[Luxand] liveness parsed ->', { passed, score });
+    
+    console.log('[Luxand] liveness parsed ->', { 
+      passed, 
+      score, 
+      isFake, 
+      isReal, 
+      liveness: json?.liveness, 
+      result: json?.result 
+    });
+    
     return { passed, score };
   } catch (e) {
     console.error('[Luxand] liveness error:', e);
@@ -78,7 +108,7 @@ export async function similarity(face1Uri: string, face2Uri: string): Promise<{ 
 }
 
 export async function verifyFace(idImageUri: string, selfieImageUri: string, opts: { minConfidence?: number } = {}): Promise<FaceVerificationResult> {
-  const minConfidence = opts.minConfidence ?? 60;
+  const minConfidence = opts.minConfidence ?? 90;
   if (!LUXAND_TOKEN) {
     return { isMatch: false, confidence: 0, faceDetected: false, errorType: 'technical_error', error: 'Luxand token missing' };
   }

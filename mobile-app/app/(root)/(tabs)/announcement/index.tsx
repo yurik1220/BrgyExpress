@@ -78,8 +78,15 @@ export default function AnnouncementsList() {
     }
 
     const getPriorityConfig = (priority: string) => {
+        // Debug: Log the actual priority value received
+        console.log('Received priority:', priority, 'Type:', typeof priority);
+        
+        // Normalize priority to handle case variations
+        const normalizedPriority = priority?.toLowerCase();
+        console.log('Normalized priority:', normalizedPriority);
+        
         const priorityConfig = {
-            high: { 
+            urgent: { 
                 color: '#ef4444', 
                 icon: 'alert-circle' as const, 
                 text: 'Urgent',
@@ -87,7 +94,7 @@ export default function AnnouncementsList() {
                 bgColor: '#fef2f2',
                 borderColor: '#fecaca'
             },
-            medium: { 
+            important: { 
                 color: '#f59e0b', 
                 icon: 'alert' as const, 
                 text: 'Important',
@@ -95,17 +102,17 @@ export default function AnnouncementsList() {
                 bgColor: '#fffbeb',
                 borderColor: '#fed7aa'
             },
-            low: { 
+            normal: { 
                 color: '#10b981', 
                 icon: 'information-circle' as const, 
-                text: 'Info',
+                text: 'Normal',
                 gradient: ['#10b981', '#059669'],
                 bgColor: '#f0fdf4',
                 borderColor: '#bbf7d0'
             }
         };
 
-        return priorityConfig[priority as keyof typeof priorityConfig] || priorityConfig.low;
+        return priorityConfig[normalizedPriority as keyof typeof priorityConfig] || priorityConfig.normal;
     };
 
     const formatDate = (dateString: string) => {
@@ -181,7 +188,7 @@ export default function AnnouncementsList() {
                                 {item.title}
                             </Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Ionicons name="time-outline" size={12} color="#9ca3af" style={{ marginRight: 4 }} />
+                                <Ionicons name="calendar-outline" size={12} color="#9ca3af" style={{ marginRight: 4 }} />
                                 <Text style={{ 
                                     color: '#6b7280', 
                                     fontSize: 13,

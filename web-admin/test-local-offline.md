@@ -120,3 +120,5 @@ git add . && git commit -m "Test offline" && git push
 ```
 
 The offline functionality is designed to work in production environments where it's actually needed! 🚀
+
+

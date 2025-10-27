@@ -41,6 +41,10 @@ const Login = () => {
                 localStorage.setItem('adminData', JSON.stringify(response.data.admin));
                 localStorage.setItem('adminToken', response.data.token);
                 
+                // Set admin username and login time for watermark
+                localStorage.setItem('admin_username', response.data.admin.username || formData.username);
+                localStorage.setItem('admin_login_time', new Date().toISOString());
+                
                 // Start session management
                 sessionManager.startSession();
                 
