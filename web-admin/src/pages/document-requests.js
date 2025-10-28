@@ -249,11 +249,26 @@ const DocumentRequests = () => {
                         </div>
                     ) : (
                         filteredPending.map((request) => (
-                            <div
-                                key={request.id}
-                                className="request-card pending-card"
-                                onClick={() => setSelectedRequest(request)}
-                            >
+                        <div
+                            key={request.id}
+                            className="request-card pending-card"
+                            onClick={async () => {
+                                setSelectedRequest(request);
+                                
+                                // Log modal view to audit logs
+                                try {
+                                    console.log('🔍 Logging modal view for:', request.reference_number);
+                                    const response = await api.post('/api/admin/audit-log', {
+                                        action: 'View Document Request Details',
+                                        referenceNumber: request.reference_number || request.id,
+                                        resourceType: 'document_request'
+                                    });
+                                    console.log('✅ Audit log response:', response.data);
+                                } catch (err) {
+                                    console.error('❌ Failed to log audit:', err.response?.data || err.message);
+                                }
+                            }}
+                        >
                                 <div className="card-header">
                                     <div className="request-info">
                                         <span className="request-type">
@@ -302,11 +317,24 @@ const DocumentRequests = () => {
                         </div>
                     ) : (
                         filteredHistory.map((request) => (
-                            <div
-                                key={request.id}
-                                className={`request-card history-card ${request.status}`}
-                                onClick={() => setSelectedRequest(request)}
-                            >
+                        <div
+                            key={request.id}
+                            className={`request-card history-card ${request.status}`}
+                            onClick={async () => {
+                                setSelectedRequest(request);
+                                
+                                // Log modal view to audit logs
+                                try {
+                                    await api.post('/api/admin/audit-log', {
+                                        action: 'View Document Request Details',
+                                        referenceNumber: request.reference_number || request.id,
+                                        resourceType: 'document_request'
+                                    });
+                                } catch (err) {
+                                    console.error('Failed to log audit:', err);
+                                }
+                            }}
+                        >
                                 <div className="card-header">
                                     <div className="request-info">
                                         <span className="request-type">

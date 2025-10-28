@@ -111,6 +111,17 @@ const Analytics = () => {
     // Generate PDF Report
     const generatePDFReport = async () => {
         try {
+            // Fetch spam analytics if not already loaded
+            let spamAnalyticsData = spamAnalytics;
+            if (!spamAnalyticsData && activeTab === 'spam') {
+                try {
+                    const response = await api.get('/api/analytics/spam');
+                    spamAnalyticsData = response.data?.data;
+                } catch (err) {
+                    console.warn('Failed to fetch spam analytics for PDF:', err);
+                }
+            }
+            
             // Create a new window for PDF generation
             const printWindow = window.open('', '_blank');
             
@@ -551,6 +562,74 @@ const Analytics = () => {
             } The geographic distribution of incidents helps identify areas requiring additional attention and resources.
         </div>
     </div>
+
+    <!-- Spam Analytics Section -->
+    ${spamAnalyticsData ? `
+    <div class="section page-break">
+        <h2 class="section-title">4. Spam Analytics</h2>
+        
+        <div class="subsection-title">Spam Metrics Overview</div>
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-value">${spamAnalyticsData.totalRejectedSubmissions || 0}</div>
+                <div class="kpi-label">Total Rejections</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value">${spamAnalyticsData.averageSpamScore || '0.00'}</div>
+                <div class="kpi-label">Avg Spam Score</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value">${spamAnalyticsData.usersDisabled?.total || 0}</div>
+                <div class="kpi-label">Disabled Users</div>
+                <div class="kpi-label" style="margin-top: 0.5em; font-size: 0.85em;">
+                    Temp: ${spamAnalyticsData.usersDisabled?.temp || 0} | Perm: ${spamAnalyticsData.usersDisabled?.perm || 0}
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value">${parseFloat(spamAnalyticsData.rejectionRate || 0).toFixed(1)}%</div>
+                <div class="kpi-label">Rejection Rate</div>
+            </div>
+        </div>
+        
+        ${spamAnalyticsData.topOffenders && spamAnalyticsData.topOffenders.length > 0 ? `
+        <div class="subsection-title">Top Spam Offenders</div>
+        <div class="chart-container">
+            <div class="chart-title">Users with Highest Spam Points</div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Username</th>
+                        <th>Name</th>
+                        <th>Total Points</th>
+                        <th>Active Points</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${spamAnalyticsData.topOffenders.slice(0, 10).map((offender, index) => `
+                        <tr>
+                            <td><strong>#${index + 1}</strong></td>
+                            <td>${offender.username || '-'}</td>
+                            <td>${offender.name || '-'}</td>
+                            <td><strong style="color: ${offender.total_spam_points > 10 ? '#dc2626' : offender.total_spam_points > 5 ? '#f59e0b' : '#10b981'}">${offender.total_spam_points || 0}</strong></td>
+                            <td>${offender.spam_points || 0}/7</td>
+                            <td>${offender.status || 'active'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        ` : ''}
+        
+        <div class="annotation">
+            <strong>Analysis:</strong> ${parseFloat(spamAnalyticsData.rejectionRate || 0).toFixed(1) > 15 ? 
+                `The rejection rate of ${parseFloat(spamAnalyticsData.rejectionRate || 0).toFixed(1)}% indicates a relatively high rate of low-quality submissions. This may require additional screening or user education initiatives to improve submission quality.` :
+                `The rejection rate of ${parseFloat(spamAnalyticsData.rejectionRate || 0).toFixed(1)}% is within acceptable parameters. The community demonstrates good understanding of submission requirements.`
+            } A total of ${spamAnalyticsData.usersDisabled?.total || 0} users have been flagged for spam, with ${spamAnalyticsData.usersDisabled?.perm || 0} requiring permanent restrictions.
+        </div>
+    </div>
+    ` : ''}
 
     <!-- Footer -->
     <div class="footer">
@@ -1367,6 +1446,23 @@ const Analytics = () => {
     };
 
     const [incidentPoints, setIncidentPoints] = useState([]);
+    const [spamAnalytics, setSpamAnalytics] = useState(null);
+
+    // Fetch spam analytics
+    const fetchSpamAnalytics = useCallback(async () => {
+        try {
+            const response = await api.get('/api/analytics/spam');
+            setSpamAnalytics(response.data?.data);
+        } catch (err) {
+            console.error('Spam Analytics Error:', err);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === 'spam') {
+            fetchSpamAnalytics();
+        }
+    }, [activeTab, fetchSpamAnalytics]);
 
     // React Leaflet heat layer wrapper
     const HeatLayer = ({ points }) => {
@@ -1461,6 +1557,13 @@ const Analytics = () => {
                     <i className="fas fa-chart-line"></i>
                     Operational Insights
                 </button>
+                <button 
+                    className={`tab-btn ${activeTab === 'spam' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('spam')}
+                >
+                    <i className="fas fa-shield-alt"></i>
+                    Spam Analytics
+                </button>
             </div>
 
             {activeTab === 'workload' && overviewData && (
@@ -1504,6 +1607,223 @@ const Analytics = () => {
                         </div>
                         <AverageProcessingTimeModule rows={requestsData} slaHours={72} />
                         <PendingRequestsModule rows={requestsData} />
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'spam' && spamAnalytics && (
+                <div className="overview-section">
+                    {/* Spam Analytics Cards */}
+                    <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+                        gap: 20, 
+                        marginBottom: 20 
+                    }}>
+                        {/* Total Rejected Submissions */}
+                        <div className="chart-card">
+                            <h3>Total Rejections</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                                <div style={{
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: 12,
+                                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <i className="fas fa-ban" style={{ color: '#fff', fontSize: 20 }}></i>
+                                </div>
+                                <div>
+                                    <div style={{ color: '#6b7280', fontSize: 13, fontWeight: 600 }}>Total</div>
+                                    <div style={{ color: '#1f2937', fontSize: 28, fontWeight: 800 }}>
+                                        {spamAnalytics?.totalRejectedSubmissions || 0}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Average Spam Score */}
+                        <div className="chart-card">
+                            <h3>Avg Spam Score</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                                <div style={{
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: 12,
+                                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <i className="fas fa-chart-bar" style={{ color: '#fff', fontSize: 20 }}></i>
+                                </div>
+                                <div>
+                                    <div style={{ color: '#6b7280', fontSize: 13, fontWeight: 600 }}>Average</div>
+                                    <div style={{ color: '#1f2937', fontSize: 28, fontWeight: 800 }}>
+                                        {spamAnalytics?.averageSpamScore || '0.00'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Disabled Users (Temp) */}
+                        <div className="chart-card">
+                            <h3>Temp Disabled</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                                <div style={{
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: 12,
+                                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <i className="fas fa-clock" style={{ color: '#fff', fontSize: 20 }}></i>
+                                </div>
+                                <div>
+                                    <div style={{ color: '#6b7280', fontSize: 13, fontWeight: 600 }}>Users</div>
+                                    <div style={{ color: '#1f2937', fontSize: 28, fontWeight: 800 }}>
+                                        {spamAnalytics?.usersDisabled?.temp || 0}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Disabled Users (Perm) */}
+                        <div className="chart-card">
+                            <h3>Perm Disabled</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                                <div style={{
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: 12,
+                                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <i className="fas fa-user-slash" style={{ color: '#fff', fontSize: 20 }}></i>
+                                </div>
+                                <div>
+                                    <div style={{ color: '#6b7280', fontSize: 13, fontWeight: 600 }}>Users</div>
+                                    <div style={{ color: '#1f2937', fontSize: 28, fontWeight: 800 }}>
+                                        {spamAnalytics?.usersDisabled?.perm || 0}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Rejection Rate */}
+                        <div className="chart-card">
+                            <h3>Rejection Rate</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                                <div style={{
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: 12,
+                                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <i className="fas fa-percentage" style={{ color: '#fff', fontSize: 20 }}></i>
+                                </div>
+                                <div>
+                                    <div style={{ color: '#6b7280', fontSize: 13, fontWeight: 600 }}>Overall</div>
+                                    <div style={{ color: '#1f2937', fontSize: 28, fontWeight: 800 }}>
+                                        {spamAnalytics?.rejectionRate?.toFixed(1) || '0.0'}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Top Offenders Table */}
+                    <div className="chart-card">
+                        <h3>Top Offenders</h3>
+                        <div className="chart-content">
+                            {!spamAnalytics?.topOffenders?.length ? (
+                                <div style={{ textAlign: 'center', color: '#6b7280', padding: 20 }}>
+                                    No offenders found
+                                </div>
+                            ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                                        <th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>Rank</th>
+                                        <th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>Username</th>
+                                        <th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>Name</th>
+                                        <th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>Total Spam Points</th>
+                                        <th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>Active Points</th>
+                                        <th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>Status</th>
+                                        <th style={{ padding: '12px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>Disabled Since</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {spamAnalytics.topOffenders.map((offender, index) => (
+                                            <tr key={offender.clerk_id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                                <td style={{ padding: '12px' }}>
+                                                    <span style={{
+                                                        display: 'inline-block',
+                                                        width: 32,
+                                                        height: 32,
+                                                        borderRadius: '50%',
+                                                        background: index === 0 ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : 
+                                                                   index === 1 ? 'linear-gradient(135deg, #94a3b8, #64748b)' :
+                                                                   index === 2 ? 'linear-gradient(135deg, #d97706, #b45309)' : '#f3f4f6',
+                                                        color: '#fff',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        fontWeight: 700,
+                                                        fontSize: 14
+                                                    }}>
+                                                        {index + 1}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '12px', color: '#374151' }}>{offender.username || '-'}</td>
+                                                <td style={{ padding: '12px', color: '#374151' }}>{offender.name || '-'}</td>
+                                                <td style={{ padding: '12px' }}>
+                                                    <span style={{
+                                                        color: offender.total_spam_points > 10 ? '#ef4444' : 
+                                                               offender.total_spam_points > 5 ? '#f59e0b' : '#10b981',
+                                                        fontWeight: 700,
+                                                        fontSize: '16px'
+                                                    }}>
+                                                        {offender.total_spam_points || 0}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '12px' }}>
+                                                    <span style={{
+                                                        color: offender.spam_points >= 7 ? '#ef4444' : 
+                                                               offender.spam_points >= 5 ? '#f59e0b' : '#10b981',
+                                                        fontWeight: 600
+                                                    }}>
+                                                        {offender.spam_points || 0}/7
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '12px' }}>
+                                                    <span style={{
+                                                        color: offender.status === 'disabled' && offender.spam_points >= 7 ? '#ef4444' : 
+                                                               offender.status === 'disabled' && offender.spam_points < 7 ? '#f59e0b' : '#10b981',
+                                                        fontWeight: 600,
+                                                        textTransform: 'uppercase'
+                                                    }}>
+                                                        {offender.status || 'active'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '12px', color: '#6b7280' }}>
+                                                    {offender.disabled_at ? new Date(offender.disabled_at).toLocaleString() : '-'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

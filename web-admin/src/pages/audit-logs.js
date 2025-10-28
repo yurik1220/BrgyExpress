@@ -248,27 +248,26 @@ const AuditLogs = () => {
     };
 
     const getReferenceNumber = (log) => {
-        if (log.action && log.action.includes('Update') && log.details) {
-            try {
-                const details = JSON.parse(log.details);
-                
-                // The reference number is stored directly in details.referenceNumber
-                if (details.referenceNumber) {
-                    return details.referenceNumber;
-                }
-                
-                // Fallback: check if it's in the response data
-                if (details.response && details.response.reference_number) {
-                    return details.response.reference_number;
-                }
-                
-                return 'N/A';
-            } catch (error) {
-                console.error('Error parsing audit log details:', error);
-                return 'N/A';
+        if (!log.details) return 'N/A';
+        
+        try {
+            const details = JSON.parse(log.details);
+            
+            // The reference number is stored directly in details.referenceNumber
+            if (details.referenceNumber) {
+                return details.referenceNumber;
             }
+            
+            // Fallback: check if it's in the response data
+            if (details.response && details.response.reference_number) {
+                return details.response.reference_number;
+            }
+            
+            return 'N/A';
+        } catch (error) {
+            console.error('Error parsing audit log details:', error);
+            return 'N/A';
         }
-        return 'N/A';
     };
 
     const handleViewDetails = (log) => {
@@ -375,19 +374,19 @@ const AuditLogs = () => {
                                 <th>Time</th>
                                 <th>Admin</th>
                                 <th>Action</th>
+                                <th>Reference</th>
                                 <th>Status</th>
-                                <th>Reference Number</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${allLogs.map(log => `
-                                <tr>
-                                    <td>${formatTimestamp(log.philippine_timestamp || log.timestamp)}</td>
-                                    <td>${log.admin_username || 'System'}</td>
-                                    <td class="action-${log.action.toLowerCase().replace(' ', '-')}">${log.action}</td>
-                                    <td class="status-${getStatusClass(log.details)}">${getStatusFromDetails(log.details)}</td>
-                                    <td>${getReferenceNumber(log)}</td>
-                                </tr>
+                            <tr>
+                                <td>${formatTimestamp(log.philippine_timestamp || log.timestamp)}</td>
+                                <td>${log.admin_username || 'System'}</td>
+                                <td class="action-${log.action.toLowerCase().replace(' ', '-')}">${log.action}</td>
+                                <td>${getReferenceNumber(log)}</td>
+                                <td class="status-${getStatusClass(log.details)}">${getStatusFromDetails(log.details)}</td>
+                            </tr>
                             `).join('')}
                         </tbody>
                     </table>
@@ -557,11 +556,12 @@ const AuditLogs = () => {
                 <table className="audit-logs-table">
                     <thead>
                         <tr>
-                            <th>Time</th>
-                            <th>Admin</th>
-                            <th>Action</th>
-                            <th>Status</th>
-                            <th>Details</th>
+                                <th>Time</th>
+                                <th>Admin</th>
+                                <th>Action</th>
+                                <th>Reference</th>
+                                <th>Status</th>
+                                <th>Details</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -595,6 +595,11 @@ const AuditLogs = () => {
                                              log.action}
                                         </span>
                                     </div>
+                                </td>
+                                <td className="reference">
+                                    <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                                        {getReferenceNumber(log)}
+                                    </span>
                                 </td>
                                 <td className="status">
                                     <span className={`status-badge ${getStatusClass(log.details)}`}>

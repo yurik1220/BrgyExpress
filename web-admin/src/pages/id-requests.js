@@ -317,9 +317,20 @@ const IdRequests = () => {
                         <div
                             key={request.id}
                             className={`request-card ${request.status}-card`}
-                            onClick={() => {
+                            onClick={async () => {
                                 setSelectedRequest(request);
                                 setShowModal(true);
+                                
+                                // Log modal view to audit logs
+                                try {
+                                    await api.post('/api/admin/audit-log', {
+                                        action: 'View ID Request Details',
+                                        referenceNumber: request.reference_number || request.id,
+                                        resourceType: 'id_request'
+                                    });
+                                } catch (err) {
+                                    console.error('Failed to log audit:', err);
+                                }
                             }}
                         >
                             <div className="card-header">

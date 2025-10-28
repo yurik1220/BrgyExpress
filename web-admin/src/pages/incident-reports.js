@@ -251,7 +251,21 @@ const IncidentReports = () => {
                         <div
                             key={report.id}
                             className={`report-card ${report.status || 'pending'}-card`}
-                            onClick={() => { setSelectedReport(report); setShowDetailsModal(true); }}
+                            onClick={async () => { 
+                                setSelectedReport(report); 
+                                setShowDetailsModal(true);
+                                
+                                // Log modal view to audit logs
+                                try {
+                                    await api.post('/api/admin/audit-log', {
+                                        action: 'View Incident Report Details',
+                                        referenceNumber: report.reference_number || report.id,
+                                        resourceType: 'incident_report'
+                                    });
+                                } catch (err) {
+                                    console.error('Failed to log audit:', err);
+                                }
+                            }}
                         >
                             <div className="card-header">
                                 <div className="report-info">

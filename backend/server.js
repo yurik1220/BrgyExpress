@@ -244,12 +244,174 @@ async function ensureSchema() {
         } catch (e) {
             console.warn('file_uploads schema ensure failed or partially applied:', e?.message || e);
         }
+
+        // Spam tracking system - Add columns to users table
+        try {
+            await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS spam_points INTEGER DEFAULT 0");
+            await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS total_spam_points INTEGER DEFAULT 0");
+            await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ");
+            console.log('✅ Spam tracking columns added to users table');
+        } catch (e) {
+            console.warn('Users spam tracking schema ensure failed:', e?.message || e);
+        }
+
+        // Create spam_logs table for tracking spam events
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS spam_logs (
+                    id SERIAL PRIMARY KEY,
+                    clerk_id VARCHAR(255) NOT NULL,
+                    request_type VARCHAR(50) NOT NULL,
+                    request_id INTEGER,
+                    rejection_reason TEXT,
+                    spam_points_before INTEGER DEFAULT 0,
+                    spam_points_after INTEGER DEFAULT 0,
+                    account_status_before TEXT,
+                    account_status_after TEXT,
+                    action TEXT NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    FOREIGN KEY (clerk_id) REFERENCES public.users (clerk_id) ON DELETE CASCADE
+                )
+            `);
+            // Create indexes for spam_logs
+            await pool.query("CREATE INDEX IF NOT EXISTS idx_spam_logs_clerk_id ON spam_logs(clerk_id)");
+            await pool.query("CREATE INDEX IF NOT EXISTS idx_spam_logs_created_at ON spam_logs(created_at)");
+            console.log('✅ spam_logs table created');
+        } catch (e) {
+            console.warn('spam_logs schema ensure failed:', e?.message || e);
+        }
     } catch (err) {
         console.error('❌ Database connection/schema ensure failed:', err.message);
     }
 }
 
 ensureSchema();
+
+// ==========================================
+// SPAM MANAGEMENT SYSTEM FUNCTIONS
+// ==========================================
+
+/**
+ * Increment spam points and handle automatic disabling
+ * @param {string} clerkId - User's clerk ID
+ * @param {string} requestType - Type of request (incident_report, document_request, id_request)
+ * @param {number} requestId - ID of the rejected request
+ * @param {string} rejectionReason - Reason for rejection
+ * @returns {Promise<{success: boolean, spamPoints: number, status: string, message: string}>}
+ */
+async function handleSpamIncrement(clerkId, requestType, requestId, rejectionReason) {
+    try {
+        // Get current user data
+        const userResult = await pool.query(
+            'SELECT spam_points, total_spam_points, status FROM users WHERE clerk_id = $1',
+            [clerkId]
+        );
+
+        if (userResult.rows.length === 0) {
+            return { success: false, message: 'User not found' };
+        }
+
+        const currentPoints = userResult.rows[0].spam_points || 0;
+        const currentTotalPoints = userResult.rows[0].total_spam_points || 0;
+        const currentStatus = userResult.rows[0].status || 'active';
+        const newPoints = currentPoints + 1;
+        const newTotalPoints = currentTotalPoints + 1;
+
+        // Determine new status based on spam points
+        let newStatus = currentStatus;
+        let disabledAt = null;
+        
+        if (newPoints >= 7) {
+            newStatus = 'disabled';
+            disabledAt = currentStatus !== 'disabled' ? new Date().toISOString() : userResult.rows[0].disabled_at;
+        } else if (newPoints >= 5 && (currentStatus === 'active' || currentStatus === 'pending')) {
+            newStatus = 'disabled';
+            disabledAt = new Date().toISOString();
+        } else if (currentStatus === 'disabled') {
+            // Keep existing disabled status
+            newStatus = currentStatus;
+        }
+
+        // Update user's spam points, total spam points, and status
+        await pool.query(
+            'UPDATE users SET spam_points = $1, total_spam_points = $2, status = $3, disabled_at = $4 WHERE clerk_id = $5',
+            [newPoints, newTotalPoints, newStatus, disabledAt, clerkId]
+        );
+
+        // Log the spam event
+        await pool.query(
+            `INSERT INTO spam_logs (clerk_id, request_type, request_id, rejection_reason, 
+             spam_points_before, spam_points_after, account_status_before, account_status_after, action)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [clerkId, requestType, requestId, rejectionReason, currentPoints, newPoints, currentStatus, newStatus, 'rejection_increment']
+        );
+
+        let message = `Spam points increased to ${newPoints}`;
+        if (newStatus === 'disabled' && newPoints >= 7) {
+            message = `Account permanently disabled (7 points). Contact admin.`;
+        } else if (newStatus === 'disabled' && newPoints >= 5) {
+            message = `Account temporarily disabled (5 points). Suspension will lift in 24 hours.`;
+        }
+
+        console.log(`🚨 Spam tracking: ${clerkId} - Active Points: ${currentPoints} → ${newPoints}, Total Points: ${currentTotalPoints} → ${newTotalPoints} (Status: ${currentStatus} → ${newStatus})`);
+
+        return { 
+            success: true, 
+            spamPoints: newPoints, 
+            status: newStatus, 
+            message 
+        };
+    } catch (error) {
+        console.error('❌ Error handling spam increment:', error);
+        return { success: false, message: error.message };
+    }
+}
+
+/**
+ * Schedule automatic lifting of temporary disables after 24 hours
+ */
+async function scheduleAutoLiftDisables() {
+    try {
+        // Check for users with disabled status older than 24 hours (temporary bans only)
+        // Only auto-lift if they have 5 or 6 points (not 7+ which is permanent)
+        const result = await pool.query(
+            `SELECT clerk_id, disabled_at, spam_points FROM users 
+             WHERE status = 'disabled' 
+             AND spam_points >= 5
+             AND spam_points < 7
+             AND disabled_at IS NOT NULL 
+             AND disabled_at < NOW() - INTERVAL '24 hours'`
+        );
+
+        if (result.rows.length > 0) {
+            console.log(`🔄 Found ${result.rows.length} users with expired temporary bans`);
+            
+            for (const user of result.rows) {
+                // Lift the temporary disable and reset spam_points
+                await pool.query(
+                    `UPDATE users SET status = 'active', disabled_at = NULL, spam_points = 0 WHERE clerk_id = $1`,
+                    [user.clerk_id]
+                );
+
+                // Log the auto-lift
+                await pool.query(
+                    `INSERT INTO spam_logs (clerk_id, request_type, action, account_status_before, account_status_after, spam_points_before, spam_points_after)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [user.clerk_id, 'system', 'auto_lift_temp_disable', 'disabled', 'active', null, null]
+                );
+
+                console.log(`✅ Auto-lifted temporary ban for user ${user.clerk_id}`);
+            }
+        }
+    } catch (error) {
+        console.error('❌ Error in scheduleAutoLiftDisables:', error);
+    }
+}
+
+// Schedule auto-lift check every hour
+setInterval(scheduleAutoLiftDisables, 60 * 60 * 1000);
+
+console.log('🕐 Auto-lift scheduler started (runs every hour)');
 
 // Helper: refresh the in-memory flag for presence of image columns
 // Recompute the hasIdImageColumns flag on demand (used before certain inserts)
@@ -824,8 +986,8 @@ app.get('/api/admin/audit-logs', generalLimiter, async (req, res) => {
         let params = [];
         let paramCount = 0;
         
-        // Default filtering: only show Login, Logout, and Update actions
-        query += ` AND (action = 'Admin Login' OR action = 'Admin Logout' OR action ILIKE 'Update%')`;
+        // Default filtering: show Login, Logout, Update, and View actions
+        query += ` AND (action = 'Admin Login' OR action = 'Admin Logout' OR action ILIKE 'Update%' OR action ILIKE 'View%')`;
         
         if (action) {
             paramCount++;
@@ -1703,7 +1865,7 @@ app.get('/api/admin/users', generalLimiter, auditLog('List Users'), async (req, 
         const countRes = await pool.query(countSql, params);
         let total = parseInt(countRes.rows[0].count || '0');
 
-        const dataSql = `SELECT id, username, name, email, contact, address, birth_date, status, clerk_id, created_at, updated_at
+        const dataSql = `SELECT id, username, name, email, contact, address, birth_date, status, clerk_id, created_at, updated_at, spam_points, total_spam_points, disabled_at
                          FROM users ${where}
                          ORDER BY created_at DESC
                          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
@@ -1731,6 +1893,9 @@ app.get('/api/admin/users', generalLimiter, auditLog('List Users'), async (req, 
                 clerk_id: r.clerk_id,
                 created_at: r.created_at,
                 updated_at: null,
+                spam_points: 0,
+                total_spam_points: 0,
+                disabled_at: null,
             }));
             total = dataRows.length; // best-effort
         }
@@ -1756,7 +1921,7 @@ app.get('/api/admin/users/:id', generalLimiter, auditLog('Get User Detail'), asy
     try {
         const { id } = req.params;
         const userRes = await pool.query(
-            `SELECT id, username, name, email, contact, address, birth_date, status, clerk_id, created_at, updated_at, selfie_image_url, id_image_url
+            `SELECT id, username, name, email, contact, address, birth_date, status, clerk_id, created_at, updated_at, selfie_image_url, id_image_url, spam_points, total_spam_points, disabled_at
              FROM users WHERE id = $1`,
             [id]
         );
@@ -1852,15 +2017,25 @@ app.post('/api/admin/users/:id/action', extractAdminInfo, auditLog('User Account
         if (!valid.includes(action)) return res.status(400).json({ success: false, message: 'Invalid action' });
 
         let newStatus = null;
+        let resetSpamPoints = false;
         if (action === 'approve') newStatus = 'active';
         if (action === 'reject') newStatus = 'disabled';
-        if (action === 'enable') newStatus = 'active';
+        if (action === 'enable') {
+            newStatus = 'active';
+            resetSpamPoints = true; // Reset spam points when manually enabling
+        }
         if (action === 'disable') newStatus = 'disabled';
 
-        const result = await pool.query(
-            `UPDATE users SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, email, contact, address, birth_date, status, clerk_id, created_at, updated_at`,
-            [newStatus, id]
-        );
+        let query, params;
+        if (resetSpamPoints) {
+            query = `UPDATE users SET status = $1, spam_points = 0, disabled_at = NULL, updated_at = NOW() WHERE id = $2 RETURNING id, name, email, contact, address, birth_date, status, clerk_id, created_at, updated_at, spam_points, total_spam_points`;
+            params = [newStatus, id];
+        } else {
+            query = `UPDATE users SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, email, contact, address, birth_date, status, clerk_id, created_at, updated_at, spam_points, total_spam_points`;
+            params = [newStatus, id];
+        }
+
+        const result = await pool.query(query, params);
         if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
         res.status(200).json({ success: true, data: result.rows[0] });
     } catch (e) {
@@ -1869,6 +2044,66 @@ app.post('/api/admin/users/:id/action', extractAdminInfo, auditLog('User Account
     }
 });
 
+
+// ========== AUDIT LOGGING ENDPOINT ========== //
+// Endpoint for logging modal views and other frontend actions
+app.post('/api/admin/audit-log', generalLimiter, async (req, res) => {
+    try {
+        const { action, referenceNumber, resourceType } = req.body;
+        
+        // Try to extract admin info from various sources
+        let adminId = null;
+        let adminUsername = 'unknown';
+        
+        // Try to get admin info from Authorization header
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            try {
+                const token = authHeader.substring(7);
+                const decoded = Buffer.from(token, 'base64').toString();
+                const [id] = decoded.split(':');
+                if (id) {
+                    const result = await pool.query(
+                        'SELECT id, username, status FROM admins WHERE id = $1',
+                        [id]
+                    );
+                    if (result.rows.length > 0 && result.rows[0].status === 'active') {
+                        adminId = result.rows[0].id;
+                        adminUsername = result.rows[0].username;
+                    }
+                }
+            } catch (e) {
+                console.error('Token decode error:', e);
+            }
+        }
+        
+        // If no admin info found, still log but mark as unknown
+        if (!adminId) {
+            console.warn('⚠️ Audit log called without admin authentication');
+        }
+        
+        const details = JSON.stringify({
+            action,
+            referenceNumber,
+            resourceType,
+            timestamp: new Date().toISOString(),
+            ipAddress: req.ip,
+            userAgent: req.get('User-Agent')
+        });
+        
+        await pool.query(
+            'INSERT INTO audit_logs (admin_id, admin_username, action, details, ip_address, user_agent) VALUES ($1, $2, $3, $4, $5, $6)',
+            [adminId, adminUsername, action, details, req.ip, req.get('User-Agent')]
+        );
+        
+        console.log(`📝 Audit log: ${action} by ${adminUsername} - Ref: ${referenceNumber || 'N/A'}`);
+        
+        res.status(200).json({ success: true });
+    } catch (error) {
+        console.error('❌ Audit log error:', error);
+        res.status(500).json({ error: 'Failed to log action' });
+    }
+});
 
 // ========== NOTIFICATION FUNCTIONS ========== //
 // Helper function to format dates for notifications
@@ -2638,6 +2873,52 @@ app.post("/api/requests", upload.fields([
         return res.status(400).json({ error: "Missing 'type' field in request" });
     }
 
+    // Check if user account is disabled
+    if (clerk_id) {
+        try {
+            const userCheck = await pool.query(
+                'SELECT status, spam_points, disabled_at FROM users WHERE clerk_id = $1',
+                [clerk_id]
+            );
+
+            if (userCheck.rows.length > 0) {
+                const user = userCheck.rows[0];
+                if (user.status === 'disabled' && user.spam_points >= 5 && user.spam_points < 7) {
+                    // Temporary ban (5-6 points)
+                    const disabledSince = new Date(user.disabled_at);
+                    const hoursSinceDisable = (Date.now() - disabledSince.getTime()) / (1000 * 60 * 60);
+                    if (hoursSinceDisable < 24) {
+                        const remainingHours = Math.ceil(24 - hoursSinceDisable);
+                        return res.status(403).json({ 
+                            error: "Account temporarily disabled", 
+                            message: `Your account is temporarily disabled due to spam points (${user.spam_points}/7). It will be re-enabled in approximately ${remainingHours} hours.`,
+                            spamPoints: user.spam_points,
+                            status: 'disabled',
+                            remainingHours
+                        });
+                    } else {
+                        // Auto-lift expired temporary ban (backup check)
+                        await pool.query(
+                            'UPDATE users SET status = \'active\', disabled_at = NULL WHERE clerk_id = $1',
+                            [clerk_id]
+                        );
+                    }
+                } else if (user.status === 'disabled' && user.spam_points >= 7) {
+                    // Permanent ban (7+ points)
+                    return res.status(403).json({ 
+                        error: "Account permanently disabled", 
+                        message: `Your account has been permanently disabled due to excessive spam points (${user.spam_points}/7). Please contact the barangay admin for assistance.`,
+                        spamPoints: user.spam_points,
+                        status: 'disabled'
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error checking user status:', error);
+            // Continue with request if check fails
+        }
+    }
+
     const timestamp = new Date().toISOString();
 
     try {
@@ -3236,6 +3517,16 @@ app.patch('/api/document-requests/:id', extractAdminInfo, auditLog('Update Docum
 
         const result = await pool.query(query, values);
 
+        // Handle spam tracking if rejected
+        if (status === 'rejected' && request.rows[0].clerk_id) {
+            await handleSpamIncrement(
+                request.rows[0].clerk_id,
+                'document_request',
+                parseInt(id),
+                rejection_reason || 'No reason provided'
+            );
+        }
+
         // Include reference number in the response for audit logs
         const responseData = result.rows[0];
         if (responseData && referenceNumber) {
@@ -3339,6 +3630,16 @@ app.patch('/api/id-requests/:id', extractAdminInfo, auditLog('Update ID Request'
         console.log('🔧 Backend - Set req.auditReferenceNumber to:', referenceNumber);
 
         const result = await pool.query(query, values);
+
+        // Handle spam tracking if rejected
+        if (status === 'rejected' && request.rows[0].clerk_id) {
+            await handleSpamIncrement(
+                request.rows[0].clerk_id,
+                'id_request',
+                parseInt(id),
+                rejection_reason || 'No reason provided'
+            );
+        }
 
         // Include reference number in the response for audit logs
         const responseData = result.rows[0];
@@ -3713,6 +4014,174 @@ app.use((err, req, res, next) => {
 // Basic health and root routes for platform checks
 app.get('/', (req, res) => {
     res.status(200).send('BrgyExpress API is running');
+});
+
+// ==========================================
+// SPAM ANALYTICS ENDPOINTS
+// ==========================================
+
+app.get('/api/analytics/spam', generalLimiter, extractAdminInfo, async (req, res) => {
+    try {
+        // Get total rejected submissions across all types
+        const totalRejections = await pool.query(
+            `SELECT COUNT(*) as count, 'document_requests' as type FROM document_requests WHERE status = 'rejected'
+             UNION ALL
+             SELECT COUNT(*) as count, 'id_requests' as type FROM id_requests WHERE status = 'rejected'
+             UNION ALL
+             SELECT COUNT(*) as count, 'incident_reports' as type FROM incident_reports WHERE status = 'closed' AND (SELECT COUNT(*) FROM incident_reports WHERE id = incident_reports.id AND resolved_at IS NOT NULL) > 0`
+        );
+
+        const total = totalRejections.rows.reduce((sum, row) => sum + parseInt(row.count || 0), 0);
+
+        // Get average spam points per user
+        const avgSpamPoints = await pool.query(
+            'SELECT AVG(spam_points) as avg FROM users WHERE spam_points > 0'
+        );
+
+        // Get disabled users breakdown (temporary vs permanent based on spam points)
+        const tempDisabled = await pool.query(
+            `SELECT COUNT(*) as count 
+             FROM users 
+             WHERE status = 'disabled' AND spam_points >= 5 AND spam_points < 7`
+        );
+        const permDisabled = await pool.query(
+            `SELECT COUNT(*) as count 
+             FROM users 
+             WHERE status = 'disabled' AND spam_points >= 7`
+        );
+
+        // Get top offenders (sorted by total_spam_points)
+        const topOffenders = await pool.query(
+            `SELECT clerk_id, username, name, spam_points, total_spam_points, status, disabled_at
+             FROM users
+             WHERE total_spam_points > 0
+             ORDER BY total_spam_points DESC
+             LIMIT 10`
+        );
+
+        // Get total submissions for rejection rate calculation
+        const totalSubmissions = await pool.query(
+            `SELECT 
+                (SELECT COUNT(*) FROM document_requests) +
+                (SELECT COUNT(*) FROM id_requests) +
+                (SELECT COUNT(*) FROM incident_reports) as total`
+        );
+
+        const rejectionRate = totalSubmissions.rows[0]?.total > 0 
+            ? ((total / totalSubmissions.rows[0].total) * 100).toFixed(2) 
+            : 0;
+
+        res.json({
+            success: true,
+            data: {
+                totalRejectedSubmissions: total,
+                averageSpamScore: parseFloat(avgSpamPoints.rows[0]?.avg || 0).toFixed(2),
+                usersDisabled: {
+                    temp: parseInt(tempDisabled.rows[0]?.count || 0),
+                    perm: parseInt(permDisabled.rows[0]?.count || 0),
+                    total: parseInt(tempDisabled.rows[0]?.count || 0) + parseInt(permDisabled.rows[0]?.count || 0)
+                },
+                topOffenders: topOffenders.rows,
+                rejectionRate: parseFloat(rejectionRate)
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error fetching spam analytics:', error);
+        res.status(500).json({ error: 'Failed to fetch spam analytics' });
+    }
+});
+
+// Manual lift for permanently disabled users (admin only)
+app.patch('/api/users/:clerkId/lift-ban', extractAdminInfo, auditLog('Lift User Ban'), async (req, res) => {
+    const { clerkId } = req.params;
+
+    if (!req.adminInfo) {
+        return res.status(401).json({ error: 'Admin authentication required' });
+    }
+
+    try {
+        // Get user data
+        const userResult = await pool.query(
+            'SELECT status, spam_points, total_spam_points FROM users WHERE clerk_id = $1',
+            [clerkId]
+        );
+
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const user = userResult.rows[0];
+        
+        if (user.status !== 'disabled' || user.spam_points < 7) {
+            return res.status(400).json({ error: 'User is not permanently disabled' });
+        }
+
+        // Lift the ban and reset spam_points to 0 (but keep total_spam_points)
+        await pool.query(
+            'UPDATE users SET status = \'active\', disabled_at = NULL, spam_points = 0 WHERE clerk_id = $1',
+            [clerkId]
+        );
+
+        // Log the manual lift
+        await pool.query(
+            `INSERT INTO spam_logs (clerk_id, request_type, action, account_status_before, account_status_after)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [clerkId, 'manual', 'admin_lift_perm_disable', 'disabled', 'active']
+        );
+
+        console.log(`✅ Admin ${req.adminInfo.username} lifted permanent ban for ${clerkId}`);
+
+            res.json({ 
+                success: true, 
+                message: 'User ban lifted successfully',
+                user: {
+                    clerkId,
+                    status: 'active',
+                    spam_points: 0
+                }
+            });
+    } catch (error) {
+        console.error('❌ Error lifting user ban:', error);
+        res.status(500).json({ error: 'Failed to lift user ban' });
+    }
+});
+
+// Get user's own spam score
+app.get('/api/users/:clerkId/spam-score', async (req, res) => {
+    const { clerkId } = req.params;
+
+    try {
+        const result = await pool.query(
+            'SELECT spam_points, status, disabled_at FROM users WHERE clerk_id = $1',
+            [clerkId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const user = result.rows[0];
+        let message = `You have ${user.spam_points} spam points`;
+        
+        if (user.status === 'disabled' && user.spam_points < 7) {
+            const disabledSince = new Date(user.disabled_at);
+            const hoursSinceDisable = (Date.now() - disabledSince.getTime()) / (1000 * 60 * 60);
+            const remainingHours = Math.ceil(24 - hoursSinceDisable);
+            message += `. Your account is temporarily disabled. It will be re-enabled in approximately ${remainingHours} hours.`;
+        } else if (user.status === 'disabled' && user.spam_points >= 7) {
+            message += `. Your account is permanently disabled. Please contact the barangay admin.`;
+        }
+
+        res.json({
+            spamPoints: user.spam_points || 0,
+            accountStatus: user.status || 'active',
+            disabledAt: user.disabled_at,
+            message
+        });
+    } catch (error) {
+        console.error('❌ Error fetching user spam score:', error);
+        res.status(500).json({ error: 'Failed to fetch spam score' });
+    }
 });
 
 app.get('/health', async (req, res) => {

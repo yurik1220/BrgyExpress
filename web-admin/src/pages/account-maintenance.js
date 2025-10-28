@@ -75,9 +75,31 @@ const AccountMaintenance = () => {
             const res = await api.get(`/api/admin/users/${user.id}`);
             setSelectedUser(res.data?.data || user);
             setShowDetail(true);
+            
+            // Log modal view to audit logs
+            try {
+                await api.post('/api/admin/audit-log', {
+                    action: 'View User Details',
+                    referenceNumber: user.clerk_id || user.id,
+                    resourceType: 'user'
+                });
+            } catch (err) {
+                console.error('Failed to log audit:', err);
+            }
         } catch (e) {
             setSelectedUser(user);
             setShowDetail(true);
+            
+            // Log modal view to audit logs
+            try {
+                await api.post('/api/admin/audit-log', {
+                    action: 'View User Details',
+                    referenceNumber: user.clerk_id || user.id,
+                    resourceType: 'user'
+                });
+            } catch (err) {
+                console.error('Failed to log audit:', err);
+            }
         }
     };
 
@@ -168,6 +190,7 @@ const AccountMaintenance = () => {
                                 <th>Email</th>
                                 <th>Contact</th>
                                 <th>Status</th>
+                                <th>Spam Score</th>
                                 <th>Date Registered</th>
                                 <th>Action</th>
                             </tr>
@@ -175,13 +198,13 @@ const AccountMaintenance = () => {
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan="6" style={{ textAlign: 'center' }}>
+                                    <td colSpan="7" style={{ textAlign: 'center' }}>
                                         <div className="loading-spinner" style={{ margin: '12px auto' }}></div>
                                     </td>
                                 </tr>
                             ) : users.length === 0 ? (
                                 <tr>
-                                    <td colSpan="6" style={{ textAlign: 'center', color: '#6b7280' }}>No users found</td>
+                                    <td colSpan="7" style={{ textAlign: 'center', color: '#6b7280' }}>No users found</td>
                                 </tr>
                             ) : (
                                 users.map(u => (
@@ -190,6 +213,14 @@ const AccountMaintenance = () => {
                                         <td>{u.email || '-'}</td>
                                         <td>{u.phonenumber || u.contact || '-'}</td>
                                         <td>{statusBadge(u.status)}</td>
+                                        <td>
+                                            <span style={{ 
+                                                color: u.spam_points > 6 ? '#ef4444' : u.spam_points > 4 ? '#f59e0b' : '#10b981',
+                                                fontWeight: '600'
+                                            }}>
+                                                {u.spam_points || 0}/7
+                                            </span>
+                                        </td>
                                         <td>{u.created_at ? new Date(u.created_at).toLocaleString() : '-'}</td>
                                         <td>
                                             <button className="action-btn view" onClick={(e) => { e.stopPropagation(); openUser(u); }}>
@@ -265,6 +296,41 @@ const AccountMaintenance = () => {
                                         <span className="label">Reference #:</span>
                                         <span className="value">{selectedUser.reference_number || '-'}</span>
                                     </div>
+                                    <div className="detail-item">
+                                        <span className="label">Active Spam Points:</span>
+                                        <span className="value" style={{ 
+                                            color: selectedUser.spam_points > 6 ? '#ef4444' : selectedUser.spam_points > 4 ? '#f59e0b' : '#10b981',
+                                            fontWeight: '700'
+                                        }}>
+                                            {selectedUser.spam_points || 0} / 7
+                                        </span>
+                                    </div>
+                                    <div className="detail-item">
+                                        <span className="label">Total Spam Points:</span>
+                                        <span className="value" style={{ 
+                                            color: selectedUser.total_spam_points > 10 ? '#ef4444' : selectedUser.total_spam_points > 5 ? '#f59e0b' : '#10b981',
+                                            fontWeight: '700'
+                                        }}>
+                                            {selectedUser.total_spam_points || 0}
+                                        </span>
+                                    </div>
+                                    <div className="detail-item">
+                                        <span className="label">Account Status:</span>
+                                        <span className="value" style={{
+                                            color: selectedUser.status === 'disabled' && selectedUser.spam_points >= 7 ? '#ef4444' : 
+                                                   selectedUser.status === 'disabled' && selectedUser.spam_points < 7 ? '#f59e0b' : '#10b981',
+                                            fontWeight: '700',
+                                            textTransform: 'uppercase'
+                                        }}>
+                                            {selectedUser.status || 'active'}
+                                        </span>
+                                    </div>
+                                    {selectedUser.disabled_at && (
+                                        <div className="detail-item">
+                                            <span className="label">Disabled Since:</span>
+                                            <span className="value">{new Date(selectedUser.disabled_at).toLocaleString()}</span>
+                                        </div>
+                                    )}
                                     <div className="detail-item">
                                         <span className="label">Date Registered:</span>
                                         <span className="value">{selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleString() : '-'}</span>
@@ -436,7 +502,32 @@ const AccountMaintenance = () => {
                                     </button>
                                 )}
                                 {selectedUser.status === 'disabled' && (
-                                    <button className="btn-success" disabled={saving} onClick={() => doAction('enable')}>
+                                    <button className="btn-success" disabled={saving} onClick={async () => {
+                                        setSaving(true);
+                                        try {
+                                            // If user has 7+ points, use lift-ban endpoint to reset spam_points
+                                            if (selectedUser.spam_points >= 7) {
+                                                const res = await api.patch(`/api/users/${selectedUser.clerk_id}/lift-ban`);
+                                                if (res.data?.success) {
+                                                    alert('User ban lifted successfully. Spam points reset to 0.');
+                                                    // Refresh user data
+                                                    const refreshed = await api.get(`/api/admin/users/${selectedUser.id}`);
+                                                    setSelectedUser(refreshed.data?.data || selectedUser);
+                                                    setUsers(prev => prev.map(u => 
+                                                        u.id === selectedUser.id ? { ...u, ...refreshed.data?.data } : u
+                                                    ));
+                                                }
+                                            } else {
+                                                // Regular enable for temp bans
+                                                doAction('enable');
+                                            }
+                                        } catch (e) {
+                                            console.error(e);
+                                            alert('Failed to lift user ban');
+                                        } finally {
+                                            setSaving(false);
+                                        }
+                                    }}>
                                         Enable
                                     </button>
                                 )}
